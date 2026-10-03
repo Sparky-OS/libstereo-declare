@@ -19,7 +19,7 @@ is left-eye-first and the second is right-eye-first. Classes are 0 none,
 1 photo, 2 video, 3 game, 4 scientific. Sub-classes are per class and
 append-only: 0 unspecified; game 1 entertainment VR, 2 native 3D,
 3 GL wrapper, 4 quad-buffer StereoGL; video 1 legacy, 2 current;
-scientific 1 work VR. Unknown class/sub-class IDs through 255 are retained.
+scientific 1 work VR, 2 stereogl (quad-buffer GL). Unknown class/sub-class IDs through 255 are retained.
 
 ## Wayland
 
