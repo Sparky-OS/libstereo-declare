@@ -41,7 +41,8 @@ enum stereo_subclass {
     STEREO_GAME_STEREOGL = 4,
     STEREO_VIDEO_LEGACY = 1,
     STEREO_VIDEO_CURRENT = 2,
-    STEREO_SCIENTIFIC_VR = 1
+    STEREO_SCIENTIFIC_VR = 1,
+    STEREO_SCIENTIFIC_STEREOGL = 2
 };
 
 /* Support version, or zero when absent. Xlib errors use the caller's handler. */
