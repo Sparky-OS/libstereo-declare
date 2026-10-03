@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: MIT
+cmake_minimum_required(VERSION 3.16)
+project(StereoDeclare VERSION 1.0.0 LANGUAGES C)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(Wayland REQUIRED IMPORTED_TARGET wayland-client)
+pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
+pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
+find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
+set(stereo_xml ${CMAKE_CURRENT_SOURCE_DIR}/../src/protocols/kde-stereo-content-v1.xml)
+set(content_type_xml ${WAYLAND_PROTOCOLS_DIR}/staging/content-type/content-type-v1.xml)
+foreach(protocol stereo content_type)
+    add_custom_command(OUTPUT ${protocol}-client.h ${protocol}-protocol.c
+        COMMAND ${WAYLAND_SCANNER} --strict client-header ${${protocol}_xml} ${protocol}-client.h
+        COMMAND ${WAYLAND_SCANNER} --strict private-code ${${protocol}_xml} ${protocol}-protocol.c
+        DEPENDS ${${protocol}_xml} VERBATIM)
+endforeach()
+add_library(stereo-declare SHARED stereo-declare.c stereo-client.h stereo-protocol.c content_type-client.h content_type-protocol.c)
+target_compile_features(stereo-declare PRIVATE c_std_11)
+target_compile_options(stereo-declare PRIVATE -Wall -Wextra -Werror)
+target_include_directories(stereo-declare PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_link_libraries(stereo-declare PRIVATE PkgConfig::Wayland PkgConfig::X11)
+set_target_properties(stereo-declare PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION 1)
+install(TARGETS stereo-declare EXPORT StereoDeclareTargets)
+install(FILES stereo-declare.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(EXPORT StereoDeclareTargets NAMESPACE StereoDeclare:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/StereoDeclare)
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/StereoDeclareConfig.cmake "include(\"\${CMAKE_CURRENT_LIST_DIR}/StereoDeclareTargets.cmake\")\n")
+write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/StereoDeclareConfigVersion.cmake COMPATIBILITY SameMajorVersion)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/StereoDeclareConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/StereoDeclareConfigVersion.cmake DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/StereoDeclare)
+configure_file(stereo-declare.pc.in stereo-declare.pc @ONLY)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/stereo-declare.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)

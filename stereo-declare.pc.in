@@ -1,0 +1,10 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: stereo-declare
+Description: Stereo surface and window declarations for KWin
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -lstereo-declare
+Cflags: -I${includedir}
+Requires.private: x11 wayland-client
