@@ -15,14 +15,7 @@ struct wp_content_type_v1;
 
 enum stereo_layout {
     STEREO_NONE = 0,
-    STEREO_SBS_HALF = 1,
-    STEREO_SBS_HALF_RIGHT_FIRST = 2,
-    STEREO_SBS_FULL = 3,
-    STEREO_SBS_FULL_RIGHT_FIRST = 4,
-    STEREO_TAB_HALF = 5,
-    STEREO_TAB_HALF_RIGHT_FIRST = 6,
-    STEREO_TAB_FULL = 7,
-    STEREO_TAB_FULL_RIGHT_FIRST = 8
+    STEREO_SBS_FULL = 3
 };
 
 enum stereo_class {

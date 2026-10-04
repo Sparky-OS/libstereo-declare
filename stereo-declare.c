@@ -11,7 +11,8 @@
 
 static int valid(enum stereo_layout layout, enum stereo_class content_class, unsigned subclass)
 {
-    return (unsigned)layout <= 8 && (unsigned)content_class <= 255 && subclass <= 255;
+    return (layout == STEREO_NONE || layout == STEREO_SBS_FULL)
+        && (unsigned)content_class <= 255 && subclass <= 255;
 }
 
 unsigned stereo_supported_x11(Display *display)
