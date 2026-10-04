@@ -8,16 +8,13 @@ at the chosen render resolution; KWin selects the view for each output.
 #include <stereo-declare.h>
 
 /* X11/Xwayland: display and window belong to this application. */
-int result = stereo_declare_x11(display, window, STEREO_SBS_FULL,
-                               STEREO_CLASS_GAME, STEREO_GAME_3D);
+int result = stereo_declare_x11(display, window, STEREO_SBS_FULL);
 /* Check result == 0. Removal: stereo_remove_x11(display, window). */
 ```
 
-The layout values are stable: 0 none and 3 SBS full, left eye first. Classes are 0 none,
-1 photo, 2 video, 3 game, 4 scientific. Sub-classes are per class and
-append-only: 0 unspecified; game 1 entertainment VR, 2 native 3D,
-3 GL wrapper, 4 quad-buffer StereoGL; video 1 legacy, 2 current;
-scientific 1 work VR. Unknown class/sub-class IDs through 255 are retained.
+The layout values are stable: 0 none and 3 SBS full, left eye first. The helper
+declares the format only; the program or the user's window rule supplies any
+meaning or class.
 
 ## Wayland
 
@@ -27,8 +24,7 @@ int result = stereo_declare_wayland_init(display, NULL);
 /* In a standalone client, dispatch the initial registry announcements: */
 wl_display_roundtrip(display);
 if (result == 0 && stereo_supported_wayland() >= 1) {
-    result = stereo_declare_wayland(surface, STEREO_SBS_FULL,
-                                   STEREO_CLASS_GAME, STEREO_GAME_VR);
+    result = stereo_declare_wayland(surface, STEREO_SBS_FULL);
     wl_surface_commit(surface); /* or the application's next buffer commit */
 }
 /* Before destroying surface: */
@@ -51,15 +47,7 @@ The helper does not commit, dispatch or disconnect your Wayland connection.
 Changes, including removal, take effect with your next surface commit.
 Remove before destroying/replacing a surface; finish before disconnecting.
 Repeated declarations update the same object. Declaring layout `STEREO_NONE`
-retains class/sub-class; removal resets all three fields.
-
-When available, `wp_content_type_v1` receives photo/video/game too; scientific
-and unknown classes map to none there. The helper owns this object by default.
-If the application or toolkit already owns one, pass it with
-`stereo_declare_wayland_use_content_type(surface, existing_object)` before
-its first declaration. It remains caller-owned and must outlive the
-helper's declaration. Removal resets its type without destroying it.
-A surface must have only one stereo declaration and one content-type object.
+clears the format; removal destroys the declaration.
 
 Use the viewporter protocol to give a packed buffer the logical size of one
 eye. The render resolution may exceed the logical size for supersampling.
@@ -79,8 +67,7 @@ void declareStereo(QWindow &window)
 {
     window.create();
     if (auto *native = qGuiApp->nativeInterface<QNativeInterface::QX11Application>()) {
-        stereo_declare_x11(native->display(), window.winId(), STEREO_SBS_FULL,
-                           STEREO_CLASS_GAME, STEREO_GAME_GL);
+        stereo_declare_x11(native->display(), window.winId(), STEREO_SBS_FULL);
     }
 }
 ```
@@ -98,8 +85,7 @@ stereo_declare_wayland_init(app->display(), nullptr);
 // After QWindow::create(), and after support has been announced:
 auto *native = window.nativeInterface<QNativeInterface::Private::QWaylandWindow>();
 if (native->surface() && stereo_supported_wayland()) {
-    stereo_declare_wayland(native->surface(), STEREO_SBS_FULL,
-                           STEREO_CLASS_GAME, STEREO_GAME_GL);
+    stereo_declare_wayland(native->surface(), STEREO_SBS_FULL);
 }
 // Qt commits the surface on its next presentation.
 ```
@@ -117,8 +103,8 @@ A Windows DLL cannot call libX11 or libwayland with an HWND. The wiz3D brief's
 Linux-side route is a Steam launch wrapper (`wiz3d-run %command%`): follow
 the Wine process tree, identify its double-width client X11 window by
 `_NET_WM_PID` or the game's `WM_CLASS`, then call `stereo_declare_x11` with
-that Xwayland display and XID, `STEREO_SBS_FULL`, `STEREO_CLASS_GAME`, and
-`STEREO_GAME_GL`. Track window creation/destruction and redeclare replacements.
+that Xwayland display and XID, and `STEREO_SBS_FULL`. Track window
+creation/destruction and redeclare replacements.
 Window identification belongs to the wrapper, not this library. Do not rely
 on arbitrary Wine `SetProp` names being mirrored to X11, or on `wine start
 /unix` launching an ELF helper; the brief specifically excludes those
