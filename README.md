@@ -13,9 +13,7 @@ int result = stereo_declare_x11(display, window, STEREO_SBS_FULL,
 /* Check result == 0. Removal: stereo_remove_x11(display, window). */
 ```
 
-The layout values are stable: 0 none; 1/2 SBS half; 3/4 SBS full;
-5/6 top-and-bottom half; 7/8 top-and-bottom full. In each pair, the first
-is left-eye-first and the second is right-eye-first. Classes are 0 none,
+The layout values are stable: 0 none and 3 SBS full, left eye first. Classes are 0 none,
 1 photo, 2 video, 3 game, 4 scientific. Sub-classes are per class and
 append-only: 0 unspecified; game 1 entertainment VR, 2 native 3D,
 3 GL wrapper, 4 quad-buffer StereoGL; video 1 legacy, 2 current;
