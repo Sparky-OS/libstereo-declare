@@ -6,7 +6,6 @@ include(CMakePackageConfigHelpers)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(Wayland REQUIRED IMPORTED_TARGET wayland-client)
 pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
-pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
 find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
 set(stereo_xml ${CMAKE_CURRENT_SOURCE_DIR}/../src/protocols/kde-stereo-content-v1.xml)
 add_custom_command(OUTPUT stereo-client.h stereo-protocol.c
