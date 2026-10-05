@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "stereo-declare.h"
 #include "stereo-client.h"
+#include "content_type-client.h"
 
 #include <X11/Xatom.h>
 #include <errno.h>
@@ -8,9 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int valid(enum stereo_layout layout)
+static int valid(enum stereo_layout layout, enum stereo_class content_class, unsigned subclass)
 {
-    return layout == STEREO_NONE || layout == STEREO_SBS_FULL;
+    return (layout == STEREO_NONE || layout == STEREO_SBS_FULL)
+        && (unsigned)content_class <= 255 && subclass <= 255;
 }
 
 unsigned stereo_supported_x11(Display *display)
@@ -36,15 +38,19 @@ unsigned stereo_supported_x11(Display *display)
     return version;
 }
 
-int stereo_declare_x11(Display *display, Window window, enum stereo_layout layout)
+int stereo_declare_x11(Display *display, Window window, enum stereo_layout layout,
+                       enum stereo_class content_class, unsigned subclass)
 {
-    if (!display || !window || !valid(layout)) {
+    if (!display || !window || !valid(layout, content_class, subclass)) {
         return -EINVAL;
     }
     if (stereo_supported_x11(display) < 2) {
         return -ENOTSUP;
     }
     const unsigned long packing = layout;
+    const unsigned long kind[2] = {content_class, subclass};
+    XChangeProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CLASS", False),
+                    XA_CARDINAL, 32, PropModeReplace, (const unsigned char *)kind, 2);
     XChangeProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT", False),
                     XA_CARDINAL, 32, PropModeReplace, (const unsigned char *)&packing, 1);
     XFlush(display);
@@ -57,6 +63,7 @@ int stereo_remove_x11(Display *display, Window window)
         return -EINVAL;
     }
     XDeleteProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT", False));
+    XDeleteProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CLASS", False));
     XFlush(display);
     return 0;
 }
@@ -64,6 +71,8 @@ int stereo_remove_x11(Display *display, Window window)
 struct declaration {
     struct wl_surface *surface;
     struct kde_stereo_content_v1 *stereo;
+    struct wp_content_type_v1 *content_type;
+    int borrowed_content_type;
     struct declaration *next;
 };
 
@@ -72,7 +81,9 @@ static _Thread_local struct {
     struct wl_registry *registry;
     struct wl_event_queue *queue;
     struct kde_stereo_content_manager_v1 *manager;
+    struct wp_content_type_manager_v1 *content_manager;
     uint32_t manager_name;
+    uint32_t content_manager_name;
     unsigned version;
     struct declaration *declarations;
 } state;
@@ -85,6 +96,9 @@ static void global(void *data, struct wl_registry *registry, uint32_t name,
         state.manager = wl_registry_bind(registry, name, &kde_stereo_content_manager_v1_interface, 1);
         state.manager_name = name;
         state.version = state.manager ? 1 : 0;
+    } else if (!strcmp(interface, wp_content_type_manager_v1_interface.name) && version >= 1 && !state.content_manager) {
+        state.content_manager = wl_registry_bind(registry, name, &wp_content_type_manager_v1_interface, 1);
+        state.content_manager_name = name;
     }
 }
 
@@ -96,6 +110,10 @@ static void global_remove(void *data, struct wl_registry *registry, uint32_t nam
         kde_stereo_content_manager_v1_destroy(state.manager);
         state.manager = NULL;
         state.version = 0;
+    }
+    if (name == state.content_manager_name && state.content_manager) {
+        wp_content_type_manager_v1_destroy(state.content_manager);
+        state.content_manager = NULL;
     }
 }
 
@@ -131,9 +149,32 @@ unsigned stereo_supported_wayland(void)
     return state.version;
 }
 
-int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout)
+int stereo_declare_wayland_use_content_type(struct wl_surface *surface, struct wp_content_type_v1 *content_type)
 {
-    if (!surface || !valid(layout)) {
+    if (!surface || !content_type || !state.display) {
+        return -EINVAL;
+    }
+    for (struct declaration *entry = state.declarations; entry; entry = entry->next) {
+        if (entry->surface == surface) {
+            return -EBUSY;
+        }
+    }
+    struct declaration *entry = calloc(1, sizeof(*entry));
+    if (!entry) {
+        return -ENOMEM;
+    }
+    entry->surface = surface;
+    entry->content_type = content_type;
+    entry->borrowed_content_type = 1;
+    entry->next = state.declarations;
+    state.declarations = entry;
+    return 0;
+}
+
+int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout,
+                           enum stereo_class content_class, unsigned subclass)
+{
+    if (!surface || !valid(layout, content_class, subclass)) {
         return -EINVAL;
     }
     if (!state.manager) {
@@ -157,8 +198,20 @@ int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout
         if (!entry->stereo) {
             return -ENOMEM;
         }
+        if (state.content_manager && !entry->borrowed_content_type) {
+            entry->content_type = wp_content_type_manager_v1_get_surface_content_type(state.content_manager, surface);
+            if (!entry->content_type) {
+                kde_stereo_content_v1_destroy(entry->stereo);
+                entry->stereo = NULL;
+                return -ENOMEM;
+            }
+        }
     }
     kde_stereo_content_v1_set_content(entry->stereo, layout);
+    kde_stereo_content_v1_set_content_class(entry->stereo, content_class, subclass);
+    if (entry->content_type) {
+        wp_content_type_v1_set_content_type(entry->content_type, (unsigned)content_class <= 3 ? (unsigned)content_class : 0);
+    }
     return 0;
 }
 
@@ -177,6 +230,13 @@ int stereo_remove_wayland(struct wl_surface *surface)
         if (entry->stereo) {
             kde_stereo_content_v1_destroy(entry->stereo);
         }
+        if (entry->content_type) {
+            if (entry->borrowed_content_type) {
+                wp_content_type_v1_set_content_type(entry->content_type, WP_CONTENT_TYPE_V1_TYPE_NONE);
+            } else {
+                wp_content_type_v1_destroy(entry->content_type);
+            }
+        }
         free(entry);
     }
     return 0;
@@ -189,6 +249,9 @@ void stereo_declare_wayland_finish(void)
     }
     if (state.manager) {
         kde_stereo_content_manager_v1_destroy(state.manager);
+    }
+    if (state.content_manager) {
+        wp_content_type_manager_v1_destroy(state.content_manager);
     }
     if (state.registry) {
         wl_registry_destroy(state.registry);

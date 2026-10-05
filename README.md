@@ -8,7 +8,8 @@ at the chosen render resolution; KWin selects the view for each output.
 #include <stereo-declare.h>
 
 /* X11/Xwayland: display and window belong to this application. */
-int result = stereo_declare_x11(display, window, STEREO_SBS_FULL);
+int result = stereo_declare_x11(display, window, STEREO_SBS_FULL,
+                                STEREO_CLASS_GAME, STEREO_GAME_3D);
 /* Check result == 0. Removal: stereo_remove_x11(display, window). */
 ```
 
@@ -24,7 +25,8 @@ int result = stereo_declare_wayland_init(display, NULL);
 /* In a standalone client, dispatch the initial registry announcements: */
 wl_display_roundtrip(display);
 if (result == 0 && stereo_supported_wayland() >= 1) {
-    result = stereo_declare_wayland(surface, STEREO_SBS_FULL);
+    result = stereo_declare_wayland(surface, STEREO_SBS_FULL,
+                                    STEREO_CLASS_GAME, STEREO_GAME_3D);
     wl_surface_commit(surface); /* or the application's next buffer commit */
 }
 /* Before destroying surface: */
@@ -67,7 +69,8 @@ void declareStereo(QWindow &window)
 {
     window.create();
     if (auto *native = qGuiApp->nativeInterface<QNativeInterface::QX11Application>()) {
-        stereo_declare_x11(native->display(), window.winId(), STEREO_SBS_FULL);
+        stereo_declare_x11(native->display(), window.winId(), STEREO_SBS_FULL,
+                           STEREO_CLASS_GAME, STEREO_GAME_3D);
     }
 }
 ```
@@ -85,7 +88,8 @@ stereo_declare_wayland_init(app->display(), nullptr);
 // After QWindow::create(), and after support has been announced:
 auto *native = window.nativeInterface<QNativeInterface::Private::QWaylandWindow>();
 if (native->surface() && stereo_supported_wayland()) {
-    stereo_declare_wayland(native->surface(), STEREO_SBS_FULL);
+    stereo_declare_wayland(native->surface(), STEREO_SBS_FULL,
+                           STEREO_CLASS_GAME, STEREO_GAME_3D);
 }
 // Qt commits the surface on its next presentation.
 ```

@@ -6,13 +6,17 @@ include(CMakePackageConfigHelpers)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(Wayland REQUIRED IMPORTED_TARGET wayland-client)
 pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
+pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
 find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
 set(stereo_xml ${CMAKE_CURRENT_SOURCE_DIR}/../src/protocols/kde-stereo-content-v1.xml)
-add_custom_command(OUTPUT stereo-client.h stereo-protocol.c
-    COMMAND ${WAYLAND_SCANNER} --strict client-header ${stereo_xml} stereo-client.h
-    COMMAND ${WAYLAND_SCANNER} --strict private-code ${stereo_xml} stereo-protocol.c
-    DEPENDS ${stereo_xml} VERBATIM)
-add_library(stereo-declare SHARED stereo-declare.c stereo-client.h stereo-protocol.c)
+set(content_type_xml ${WAYLAND_PROTOCOLS_DIR}/staging/content-type/content-type-v1.xml)
+foreach(protocol stereo content_type)
+    add_custom_command(OUTPUT ${protocol}-client.h ${protocol}-protocol.c
+        COMMAND ${WAYLAND_SCANNER} --strict client-header ${${protocol}_xml} ${protocol}-client.h
+        COMMAND ${WAYLAND_SCANNER} --strict private-code ${${protocol}_xml} ${protocol}-protocol.c
+        DEPENDS ${${protocol}_xml} VERBATIM)
+endforeach()
+add_library(stereo-declare SHARED stereo-declare.c stereo-client.h stereo-protocol.c content_type-client.h content_type-protocol.c)
 target_compile_features(stereo-declare PRIVATE c_std_11)
 target_compile_options(stereo-declare PRIVATE -Wall -Wextra -Werror)
 target_include_directories(stereo-declare PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
