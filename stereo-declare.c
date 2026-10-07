@@ -9,10 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int valid(enum stereo_layout layout, enum stereo_class content_class, unsigned subclass)
+static int valid(enum stereo_layout layout)
 {
-    return (layout == STEREO_NONE || layout == STEREO_SBS_FULL)
-        && (unsigned)content_class <= 255 && subclass <= 255;
+    return layout == STEREO_NONE || layout == STEREO_SBS_FULL;
 }
 
 unsigned stereo_supported_x11(Display *display)
@@ -38,19 +37,15 @@ unsigned stereo_supported_x11(Display *display)
     return version;
 }
 
-int stereo_declare_x11(Display *display, Window window, enum stereo_layout layout,
-                       enum stereo_class content_class, unsigned subclass)
+int stereo_declare_x11(Display *display, Window window, enum stereo_layout layout)
 {
-    if (!display || !window || !valid(layout, content_class, subclass)) {
+    if (!display || !window || !valid(layout)) {
         return -EINVAL;
     }
-    if (stereo_supported_x11(display) < 2) {
+    if (stereo_supported_x11(display) < 1) {
         return -ENOTSUP;
     }
     const unsigned long packing = layout;
-    const unsigned long kind[2] = {content_class, subclass};
-    XChangeProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CLASS", False),
-                    XA_CARDINAL, 32, PropModeReplace, (const unsigned char *)kind, 2);
     XChangeProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT", False),
                     XA_CARDINAL, 32, PropModeReplace, (const unsigned char *)&packing, 1);
     XFlush(display);
@@ -63,7 +58,6 @@ int stereo_remove_x11(Display *display, Window window)
         return -EINVAL;
     }
     XDeleteProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT", False));
-    XDeleteProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CLASS", False));
     XFlush(display);
     return 0;
 }
@@ -171,10 +165,9 @@ int stereo_declare_wayland_use_content_type(struct wl_surface *surface, struct w
     return 0;
 }
 
-int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout,
-                           enum stereo_class content_class, unsigned subclass)
+int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout)
 {
-    if (!surface || !valid(layout, content_class, subclass)) {
+    if (!surface || !valid(layout)) {
         return -EINVAL;
     }
     if (!state.manager) {
@@ -208,10 +201,6 @@ int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout
         }
     }
     kde_stereo_content_v1_set_content(entry->stereo, layout);
-    kde_stereo_content_v1_set_content_class(entry->stereo, content_class, subclass);
-    if (entry->content_type) {
-        wp_content_type_v1_set_content_type(entry->content_type, (unsigned)content_class <= 3 ? (unsigned)content_class : 0);
-    }
     return 0;
 }
 

@@ -8,14 +8,14 @@ at the chosen render resolution; KWin selects the view for each output.
 #include <stereo-declare.h>
 
 /* X11/Xwayland: display and window belong to this application. */
-int result = stereo_declare_x11(display, window, STEREO_SBS_FULL,
-                                STEREO_CLASS_GAME, STEREO_GAME_3D);
+int result = stereo_declare_x11(display, window, STEREO_SBS_FULL);
 /* Check result == 0. Removal: stereo_remove_x11(display, window). */
 ```
 
 The layout values are stable: 0 none and 3 SBS full, left eye first. The helper
-declares the format only; the program or the user's window rule supplies any
-meaning or class.
+declares the format only. Programs that know their content kind set it through
+the existing `wp_content_type_v1` object with
+`stereo_declare_wayland_use_content_type()`.
 
 ## Wayland
 
@@ -25,8 +25,7 @@ int result = stereo_declare_wayland_init(display, NULL);
 /* In a standalone client, dispatch the initial registry announcements: */
 wl_display_roundtrip(display);
 if (result == 0 && stereo_supported_wayland() >= 1) {
-    result = stereo_declare_wayland(surface, STEREO_SBS_FULL,
-                                    STEREO_CLASS_GAME, STEREO_GAME_3D);
+    result = stereo_declare_wayland(surface, STEREO_SBS_FULL);
     wl_surface_commit(surface); /* or the application's next buffer commit */
 }
 /* Before destroying surface: */
@@ -69,8 +68,7 @@ void declareStereo(QWindow &window)
 {
     window.create();
     if (auto *native = qGuiApp->nativeInterface<QNativeInterface::QX11Application>()) {
-        stereo_declare_x11(native->display(), window.winId(), STEREO_SBS_FULL,
-                           STEREO_CLASS_GAME, STEREO_GAME_3D);
+        stereo_declare_x11(native->display(), window.winId(), STEREO_SBS_FULL);
     }
 }
 ```
@@ -88,8 +86,7 @@ stereo_declare_wayland_init(app->display(), nullptr);
 // After QWindow::create(), and after support has been announced:
 auto *native = window.nativeInterface<QNativeInterface::Private::QWaylandWindow>();
 if (native->surface() && stereo_supported_wayland()) {
-    stereo_declare_wayland(native->surface(), STEREO_SBS_FULL,
-                           STEREO_CLASS_GAME, STEREO_GAME_3D);
+    stereo_declare_wayland(native->surface(), STEREO_SBS_FULL);
 }
 // Qt commits the surface on its next presentation.
 ```
@@ -139,10 +136,8 @@ CMake consumers can use `find_package(StereoDeclare 1 CONFIG REQUIRED)` and
 Calls return 0 or negative errno values. Xlib errors use the application's
 X error handler; enqueueing a request does not prove the server accepted it.
 X11 requests are flushed. `stereo_supported_x11(display)` returns the root's
-support version: 1 layout only, 2 layout plus class/sub-class. The combined
-helper requires version 2. `_KDE_NET_WM_STEREO_CONTENT` is CARDINAL/32 with
-one layout value; `_KDE_NET_WM_STEREO_CONTENT_CLASS` is CARDINAL/32 with
-exactly two values, class then sub-class. Removing deletes both properties.
+support version. The helper requires version 1. `_KDE_NET_WM_STEREO_CONTENT`
+is CARDINAL/32 with one layout value. Removing deletes that property.
 X11 updates are separate requests, not an atomic transaction.
 `stereo_supported_wayland()` returns 1 when the version-1 global is present,
 otherwise 0. No automatic display-mode switch is requested by these calls.
