@@ -15,14 +15,7 @@ struct wp_content_type_v1;
 
 enum stereo_layout {
     STEREO_NONE = 0,
-    STEREO_SBS_HALF = 1,
-    STEREO_SBS_HALF_RIGHT_FIRST = 2,
-    STEREO_SBS_FULL = 3,
-    STEREO_SBS_FULL_RIGHT_FIRST = 4,
-    STEREO_TAB_HALF = 5,
-    STEREO_TAB_HALF_RIGHT_FIRST = 6,
-    STEREO_TAB_FULL = 7,
-    STEREO_TAB_FULL_RIGHT_FIRST = 8
+    STEREO_SBS_FULL = 3
 };
 
 enum stereo_class {
@@ -41,8 +34,7 @@ enum stereo_subclass {
     STEREO_GAME_STEREOGL = 4,
     STEREO_VIDEO_LEGACY = 1,
     STEREO_VIDEO_CURRENT = 2,
-    STEREO_SCIENTIFIC_VR = 1,
-    STEREO_SCIENTIFIC_STEREOGL = 2
+    STEREO_SCIENTIFIC_VR = 1
 };
 
 /* Support version, or zero when absent. Xlib errors use the caller's handler. */
@@ -58,8 +50,6 @@ int stereo_remove_x11(Display *display, Window window);
  * All surfaces passed below must belong to this display. */
 int stereo_declare_wayland_init(struct wl_display *display, struct wl_event_queue *queue);
 unsigned stereo_supported_wayland(void);
-/* Optional: supply a toolkit-owned content-type object before first declaration.
- * The helper sets it but never destroys it. It must outlive the declaration. */
 int stereo_declare_wayland_use_content_type(struct wl_surface *surface, struct wp_content_type_v1 *content_type);
 int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout,
                            enum stereo_class content_class, unsigned subclass);

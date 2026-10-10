@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 cmake_minimum_required(VERSION 3.16)
-project(StereoDeclare VERSION 1.0.0 LANGUAGES C)
+project(StereoDeclare VERSION 1.1.0 LANGUAGES C)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 find_package(PkgConfig REQUIRED)

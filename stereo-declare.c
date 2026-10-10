@@ -11,7 +11,8 @@
 
 static int valid(enum stereo_layout layout, enum stereo_class content_class, unsigned subclass)
 {
-    return (unsigned)layout <= 8 && (unsigned)content_class <= 255 && subclass <= 255;
+    return (layout == STEREO_NONE || layout == STEREO_SBS_FULL)
+        && (unsigned)content_class <= 255 && subclass <= 255;
 }
 
 unsigned stereo_supported_x11(Display *display)
@@ -207,7 +208,6 @@ int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout
         }
     }
     kde_stereo_content_v1_set_content(entry->stereo, layout);
-    kde_stereo_content_v1_set_content_class(entry->stereo, content_class, subclass);
     if (entry->content_type) {
         wp_content_type_v1_set_content_type(entry->content_type, (unsigned)content_class <= 3 ? (unsigned)content_class : 0);
     }
