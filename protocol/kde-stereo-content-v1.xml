@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="kde_stereo_content_v1">
+  <copyright><![CDATA[
+    SPDX-FileCopyrightText: 2026 Daniel Campos Ramos <Capitain_Jack@yahoo.com>
+
+    SPDX-License-Identifier: MIT-CMU
+    ]]></copyright>
+
+<interface name="kde_stereo_content_manager_v1" version="1">
+  <description summary="declare stereo content of surfaces">
+    A program tells the compositor that a surface's picture holds two
+    views, one per eye, packed full side by side, with the left eye
+    first. The compositor renders the declared surface once per eye
+    with that eye's view. The global being present announces support.
+
+    Clients may use this protocol to declare stereo content. The version 1
+    wire values are stable; future requests must use a new interface version.
+    Destroying the manager does not affect declarations it created.
+  </description>
+
+  <request name="destroy" type="destructor">
+    <description summary="Destroy the stereo content manager."/>
+  </request>
+
+  <request name="create">
+    <description summary="Create a stereo content declaration for a surface">
+      Creates a kde_stereo_content_v1 object for the given surface. The
+      declaration is none until set_content is called. If the surface
+      already has a declaration, the already_declared error is raised.
+    </description>
+    <arg name="id" type="new_id" interface="kde_stereo_content_v1"/>
+    <arg name="surface" type="object" interface="wl_surface"/>
+  </request>
+
+  <enum name="error">
+    <entry name="already_declared" value="0" summary="the surface already has a stereo content declaration"/>
+  </enum>
+</interface>
+
+<interface name="kde_stereo_content_v1" version="1">
+  <description summary="stereo content declaration of one surface">
+    The declaration of one surface, created with
+    kde_stereo_content_manager_v1.create.
+  </description>
+
+  <enum name="error">
+    <entry name="no_surface" value="0" summary="the surface no longer exists"/>
+  </enum>
+
+  <request name="destroy" type="destructor">
+    <description summary="Remove the declaration">
+      Resets the content to none on the next wl_surface commit. The surface
+      may receive a new declaration immediately.
+    </description>
+  </request>
+
+  <enum name="content">
+    <description summary="full side-by-side packing of the two views">
+      The values match the X11 property _KDE_NET_WM_STEREO_CONTENT.
+    </description>
+    <entry name="none" value="0" summary="no stereo content"/>
+    <entry name="side_by_side_full" value="3" summary="side by side, full width per eye, left first"/>
+  </enum>
+
+  <request name="set_content">
+    <description summary="Declare the surface's stereo content">
+      Takes effect with the next commit of the surface. Unknown values
+      are treated as none. Declaring none clears the format and does not
+      destroy the declaration object.
+    </description>
+    <arg name="content" type="uint" enum="content" summary="packing and eye order"/>
+  </request>
+
+</interface>
+
+</protocol>
