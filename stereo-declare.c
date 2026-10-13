@@ -9,6 +9,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+unsigned stereo_declare_version(void)
+{
+    return STEREO_DECLARE_VERSION;
+}
+
 static int valid(enum stereo_layout layout, enum stereo_class content_class, unsigned subclass)
 {
     return (layout == STEREO_NONE || layout == STEREO_SBS_FULL)
@@ -51,6 +56,21 @@ int stereo_declare_x11(Display *display, Window window, enum stereo_layout layou
     const unsigned long kind[2] = {content_class, subclass};
     XChangeProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CLASS", False),
                     XA_CARDINAL, 32, PropModeReplace, (const unsigned char *)kind, 2);
+    XChangeProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT", False),
+                    XA_CARDINAL, 32, PropModeReplace, (const unsigned char *)&packing, 1);
+    XFlush(display);
+    return 0;
+}
+
+int stereo_declare_x11_format(Display *display, Window window, enum stereo_layout layout)
+{
+    if (!display || !window || (layout != STEREO_NONE && layout != STEREO_SBS_FULL)) {
+        return -EINVAL;
+    }
+    if (stereo_supported_x11(display) < 1) {
+        return -ENOTSUP;
+    }
+    const unsigned long packing = layout;
     XChangeProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT", False),
                     XA_CARDINAL, 32, PropModeReplace, (const unsigned char *)&packing, 1);
     XFlush(display);
@@ -171,12 +191,9 @@ int stereo_declare_wayland_use_content_type(struct wl_surface *surface, struct w
     return 0;
 }
 
-int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout,
-                           enum stereo_class content_class, unsigned subclass)
+/* kind < 0: the format only, the surface's content type is left alone. */
+static int declare_wayland(struct wl_surface *surface, enum stereo_layout layout, int kind)
 {
-    if (!surface || !valid(layout, content_class, subclass)) {
-        return -EINVAL;
-    }
     if (!state.manager) {
         return -ENOTSUP;
     }
@@ -184,6 +201,7 @@ int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout
     while (entry && entry->surface != surface) {
         entry = entry->next;
     }
+    int fresh = 0;
     if (!entry) {
         entry = calloc(1, sizeof(*entry));
         if (!entry) {
@@ -192,26 +210,46 @@ int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout
         entry->surface = surface;
         entry->next = state.declarations;
         state.declarations = entry;
+        fresh = 1;
     }
     if (!entry->stereo) {
         entry->stereo = kde_stereo_content_manager_v1_create(state.manager, surface);
         if (!entry->stereo) {
-            return -ENOMEM;
-        }
-        if (state.content_manager && !entry->borrowed_content_type) {
-            entry->content_type = wp_content_type_manager_v1_get_surface_content_type(state.content_manager, surface);
-            if (!entry->content_type) {
-                kde_stereo_content_v1_destroy(entry->stereo);
-                entry->stereo = NULL;
-                return -ENOMEM;
+            if (fresh) {
+                stereo_remove_wayland(surface);
             }
+            return -ENOMEM;
         }
     }
     kde_stereo_content_v1_set_content(entry->stereo, layout);
-    if (entry->content_type) {
-        wp_content_type_v1_set_content_type(entry->content_type, (unsigned)content_class <= 3 ? (unsigned)content_class : 0);
+    if (kind >= 0) {
+        /* The content type manager may be announced after the stereo one. */
+        if (!entry->content_type && state.content_manager) {
+            entry->content_type = wp_content_type_manager_v1_get_surface_content_type(state.content_manager, surface);
+        }
+        if (entry->content_type) {
+            wp_content_type_v1_set_content_type(entry->content_type, (unsigned)kind);
+        }
     }
     return 0;
+}
+
+int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout,
+                           enum stereo_class content_class, unsigned subclass)
+{
+    if (!surface || !valid(layout, content_class, subclass)) {
+        return -EINVAL;
+    }
+    /* wp_content_type_v1 has none, photo, video and game; scientific is none there. */
+    return declare_wayland(surface, layout, (unsigned)content_class <= 3 ? (int)content_class : 0);
+}
+
+int stereo_declare_wayland_format(struct wl_surface *surface, enum stereo_layout layout)
+{
+    if (!surface || (layout != STEREO_NONE && layout != STEREO_SBS_FULL)) {
+        return -EINVAL;
+    }
+    return declare_wayland(surface, layout, -1);
 }
 
 int stereo_remove_wayland(struct wl_surface *surface)

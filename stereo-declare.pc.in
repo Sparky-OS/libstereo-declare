@@ -3,8 +3,9 @@ libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
 includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
 
 Name: stereo-declare
-Description: Stereo surface and window declarations for KWin
+Description: Declare full side-by-side stereo windows and surfaces on X11 and Wayland
 Version: @PROJECT_VERSION@
+Requires: x11
+Requires.private: wayland-client
 Libs: -L${libdir} -lstereo-declare
 Cflags: -I${includedir}
-Requires.private: x11 wayland-client
