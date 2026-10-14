@@ -8,7 +8,7 @@ The program never needs to know which screen it is on.
 
 It is a small C library (MIT) for X11 and Wayland, used by the edition's mpv, VLC, Qt Multimedia, MpvQt, Kdenlive, Marble, QEMU, SPICE and others.
 
-**Status:** version 1.1.0, a stable C API with semantic versioning; it works with Stereo KWin in Sparky Stereo OS, Daniel Ramos's edition of SparkyLinux (by Paweł "pavroo" Pijanowski). On other desktops the calls return `-ENOTSUP`, nothing is sent, and the window stays an ordinary 2D window.
+**Status:** version 1.2.0, a stable C API with semantic versioning; it works with Stereo KWin in Sparky Stereo OS, Daniel Ramos's edition of SparkyLinux (by Paweł "pavroo" Pijanowski). On other desktops the calls return `-ENOTSUP`, nothing is sent, and the window stays an ordinary 2D window.
 
 ## Start here
 
@@ -25,6 +25,12 @@ cmake --install build
 
 Then `pkg-config --cflags --libs stereo-declare`, or in CMake `find_package(StereoDeclare 1.1 CONFIG REQUIRED)` and `StereoDeclare::stereo-declare`.
 It needs Xlib, libwayland-client, wayland-scanner, wayland-protocols (for `content-type-v1`) and the `kde-stereo-content-v1.xml` protocol, which a release carries in `protocol/`.
+
+## From Python
+
+`python/stereo_declare.py` calls the same library for programs that cannot link C: a launcher, a game manager.
+It is installed as `stereo_declare` (the Debian package `python3-stereo-declare`) and needs python3-xlib and `libstereo-declare.so.1`.
+See "Python" in [API.md](API.md).
 
 ## Where it comes from
 

@@ -12,6 +12,8 @@ include(CTest)
 
 option(STEREO_DECLARE_WERROR "Treat compiler warnings as errors" OFF)
 option(STEREO_DECLARE_EXAMPLES "Build the X11 and Wayland examples" OFF)
+set(STEREO_DECLARE_PYTHON_DIR "${CMAKE_INSTALL_DATADIR}/stereo-declare/python" CACHE STRING
+    "Where stereo_declare.py is installed (a distribution sets its site-packages folder)")
 
 find_package(PkgConfig REQUIRED)
 find_package(X11 REQUIRED)
@@ -64,6 +66,8 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/StereoDeclareConfig.cmake ${CMAKE_CURR
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/StereoDeclare)
 configure_file(stereo-declare.pc.in stereo-declare.pc @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/stereo-declare.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+
+install(FILES python/stereo_declare.py DESTINATION ${STEREO_DECLARE_PYTHON_DIR} COMPONENT python)
 
 if(STEREO_DECLARE_EXAMPLES)
     add_subdirectory(examples)

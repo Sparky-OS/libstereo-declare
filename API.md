@@ -1,4 +1,4 @@
-# stereo-declare API, version 1.1
+# stereo-declare API, version 1.2
 
 **For programmers:** how a program declares a 3D window or surface once, on X11 and on Wayland.
 
@@ -122,6 +122,29 @@ Rules:
 - **The root window's `_KDE_NET_WM_STEREO_CONTENT_SUPPORTED`** gives the version the window manager understands: 1 the layout, 2 also the class and sub-class, 3 also sizing (the program's own sizes are one eye's, and the window manager makes the X11 window hold both). `stereo_declare_x11()` declares from version 2 on, `stereo_declare_x11_format()` from version 1.
 - **Xlib errors** go to the program's own error handler; a flushed request is not proof that the server accepted it.
 - **Under Xwayland** a declared child window becomes a surface of its own in Sparky Stereo OS's Xwayland, so the 3D area of an X11 program works the same way as on Wayland.
+
+## Python
+
+`stereo_declare.py` (since 1.2.0) is for programs that start or watch another program's window and cannot link C.
+It loads `libstereo-declare.so.1` with ctypes, so it makes the declaration the C calls make; it handles X11 and Xwayland windows, not Wayland surfaces.
+
+| Name | What it does |
+|---|---|
+| `Declaration(layout, content_class, subclass, on_declare)` | Opens the display and checks that the window manager takes declarations (version 2 or later); otherwise raises `StereoUnavailable`, a `RuntimeError`, which says why. The defaults are full side by side, left eye first, class game, sub-class GL wrapper. |
+| `Declaration.candidates(state, pids, steam_class)` | The one window of the game's processes (or of Proton's `steam_app_ID` class) that has the size and the executable's class that `state` names, or the window `state` names by id. Several matches count as none. |
+| `Declaration.update(wanted)` | Declares the windows in `wanted`, removes the declaration of those that are no longer in it; a window that vanished in between is not an error. |
+| `Declaration.close()` | Removes every declaration and closes the display. |
+| `window_state(path)` | Reads the state file wiz3D writes (`wiz3d-full-sbs-v1`, width, height, executable, window id); `None` for a file that is partial or not valid. |
+| `descendants(pid, known)` | The processes below `pid`; `known` keeps those Wine reparents. |
+
+```python
+import stereo_declare
+
+declaration = stereo_declare.Declaration()
+declaration.update(declaration.candidates(stereo_declare.window_state(path), stereo_declare.descendants(pid, known)))
+# every 100 ms while the game runs, then
+declaration.close()
+```
 
 ## Toolkits
 
