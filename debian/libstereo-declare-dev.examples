@@ -1,0 +1,3 @@
+examples/declare-wayland.c
+examples/declare-x11.c
+examples/CMakeLists.txt

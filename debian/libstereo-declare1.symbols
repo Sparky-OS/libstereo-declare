@@ -1,0 +1,14 @@
+libstereo-declare.so.1 libstereo-declare1 #MINVER#
+* Build-Depends-Package: libstereo-declare-dev
+ stereo_declare_version@Base 1.1.0
+ stereo_declare_wayland@Base 1.0.0
+ stereo_declare_wayland_finish@Base 1.0.0
+ stereo_declare_wayland_format@Base 1.1.0
+ stereo_declare_wayland_init@Base 1.0.0
+ stereo_declare_wayland_use_content_type@Base 1.0.0
+ stereo_declare_x11@Base 1.0.0
+ stereo_declare_x11_format@Base 1.1.0
+ stereo_remove_wayland@Base 1.0.0
+ stereo_remove_x11@Base 1.0.0
+ stereo_supported_wayland@Base 1.0.0
+ stereo_supported_x11@Base 1.0.0

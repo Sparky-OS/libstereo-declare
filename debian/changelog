@@ -1,0 +1,10 @@
+stereo-declare (1.2.0-1) unstable; urgency=medium
+
+  * New release. New: python3-stereo-declare, the module stereo_declare.py: the
+    declaration of an X11 or Xwayland window from Python, the window
+    discovery of a game from its processes or wiz3D's state file, and the
+    state-file reader that wiz3d-run carried. The C library is unchanged.
+  * The module's test runs at build time on Xvfb.
+
+ -- Daniel Ramos (Capitain Jack) <Capitain_Jack@yahoo.com>  Wed, 14 Oct 2026 20:30:00 -0300
+

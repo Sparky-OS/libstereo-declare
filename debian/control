@@ -1,0 +1,63 @@
+Source: stereo-declare
+Section: libs
+Maintainer: Daniel Ramos (Capitain Jack) <Capitain_Jack@yahoo.com>
+Build-Depends: debhelper-compat (= 13),
+               cmake,
+               dh-python,
+               libwayland-bin,
+               libwayland-dev,
+               libx11-dev,
+               pkgconf,
+               python3,
+               python3-xlib <!nocheck>,
+               wayland-protocols,
+               xauth <!nocheck>,
+               xvfb <!nocheck>,
+Standards-Version: 4.7.4
+Homepage: https://sparkylinux.org
+Vcs-Browser: https://github.com/Sparky-OS/libstereo-declare
+Vcs-Git: https://github.com/Sparky-OS/libstereo-declare.git
+
+Package: libstereo-declare1
+Architecture: any
+Multi-Arch: same
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: declare full side-by-side stereo windows and surfaces
+ A small C library with which an X11 or Wayland program tells Stereo KWin,
+ the compositor of Sparky Stereo OS, that a window or surface holds both
+ eyes side by side at full size, the left eye first. The kind of content
+ travels as the surface's wp_content_type_v1 on Wayland.
+
+Package: libstereo-declare-dev
+Section: libdevel
+Architecture: any
+Multi-Arch: same
+Depends: libstereo-declare1 (= ${binary:Version}),
+         libwayland-dev,
+         libx11-dev,
+         ${misc:Depends}
+Description: declare full side-by-side stereo windows and surfaces - development files
+ A small C library with which an X11 or Wayland program tells Stereo KWin,
+ the compositor of Sparky Stereo OS, that a window or surface holds both
+ eyes side by side at full size, the left eye first.
+ .
+ This package holds the header, the pkg-config and CMake files, the API
+ page and one example program per platform.
+
+Package: python3-stereo-declare
+Section: python
+Architecture: all
+Multi-Arch: foreign
+Depends: libstereo-declare1 (>= 1.1.0),
+         python3-xlib,
+         ${misc:Depends},
+         ${python3:Depends}
+Description: declare full side-by-side stereo windows from Python
+ A Python module for programs that start or watch another program's window
+ and cannot link C, such as a launcher or a game manager. It calls
+ libstereo-declare, so it makes the declaration the C calls make: it tells
+ Stereo KWin, the compositor of Sparky Stereo OS, that an X11 or Xwayland
+ window holds both eyes side by side at full size, the left eye first.
+ .
+ It also finds the window of a game from the game's processes or from the
+ state file wiz3D writes, and removes the declaration when the window goes.

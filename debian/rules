@@ -1,0 +1,9 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@ --buildsystem=cmake --with python3
+
+override_dh_auto_configure:
+	dh_auto_configure -- -DSTEREO_DECLARE_WERROR=ON -DSTEREO_DECLARE_PYTHON_DIR=lib/python3/dist-packages -DBUILD_TESTING=$(if $(filter nocheck,$(DEB_BUILD_OPTIONS)),OFF,ON)

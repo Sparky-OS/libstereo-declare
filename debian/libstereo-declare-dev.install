@@ -1,0 +1,4 @@
+usr/include/stereo-declare.h
+usr/lib/*/libstereo-declare.so
+usr/lib/*/pkgconfig/stereo-declare.pc
+usr/lib/*/cmake/StereoDeclare
