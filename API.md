@@ -1,4 +1,4 @@
-# stereo-declare API, version 1.2
+# stereo-declare API, version 1.3
 
 **For programmers:** how a program declares a 3D window or surface once, on X11 and on Wayland.
 
@@ -125,13 +125,14 @@ Rules:
 
 ## Python
 
-`stereo_declare.py` (since 1.2.0) is for programs that start or watch another program's window and cannot link C.
+`stereo_declare.py` (since 1.2.0; `windows_of` since 1.3.0) is for programs that start or watch another program's window and cannot link C.
 It loads `libstereo-declare.so.1` with ctypes, so it makes the declaration the C calls make; it handles X11 and Xwayland windows, not Wayland surfaces.
 
 | Name | What it does |
 |---|---|
 | `Declaration(layout, content_class, subclass, on_declare)` | Opens the display and checks that the window manager takes declarations (version 2 or later); otherwise raises `StereoUnavailable`, a `RuntimeError`, which says why. The defaults are full side by side, left eye first, class game, sub-class GL wrapper. |
 | `Declaration.candidates(state, pids, steam_class)` | The one window of the game's processes (or of Proton's `steam_app_ID` class) that has the size and the executable's class that `state` names, or the window `state` names by id. Several matches count as none. |
+| `Declaration.windows_of(pids)` | The one viewable top-level window of the given processes (several count as none): for a program that draws full side by side itself, so no wrapper reports its window. |
 | `Declaration.update(wanted)` | Declares the windows in `wanted`, removes the declaration of those that are no longer in it; a window that vanished in between is not an error. |
 | `Declaration.close()` | Removes every declaration and closes the display. |
 | `window_state(path)` | Reads the state file wiz3D writes (`wiz3d-full-sbs-v1`, width, height, executable, window id); `None` for a file that is partial or not valid. |

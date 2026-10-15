@@ -149,6 +149,23 @@ class Declaration:
         # Without a native XID, ambiguous same-game windows stay undeclared.
         return result if len(result) == 1 else set()
 
+    def windows_of(self, pids):
+        """The one viewable top-level window of the given processes, as a set; several count as none.
+
+        For a game that draws full side by side itself, so there is no state file to say which window it is."""
+        from Xlib import X, Xatom, error
+        result = set()
+        for window in self.x.screen().root.query_tree().children:
+            try:
+                if window.get_attributes().map_state != X.IsViewable:
+                    continue
+                pid = window.get_full_property(self.pid_atom, Xatom.CARDINAL)
+                if pid is not None and pid.format == 32 and len(pid.value) == 1 and int(pid.value[0]) in pids:
+                    result.add(window.id)
+            except error.XError:
+                continue
+        return result if len(result) == 1 else set()
+
     def update(self, wanted):
         for wid in self.active - wanted:
             self.lib.stereo_remove_x11(self.native, wid)
