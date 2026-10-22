@@ -1,3 +1,14 @@
+stereo-declare (1.3.1-1) unstable; urgency=medium
+
+  * Documentation: full side by side is the layout, the two eyes next to
+    each other, left eye first, each at the resolution it has (a half
+    top-and-bottom 1920x1080 frame is one 3840x540 picture); the size an
+    eye is shown at is the surface's, and the compositor resizes once. The
+    header, README, API.md and the Wayland example say so. The C library
+    and the Python module are unchanged.
+
+ -- Daniel Ramos (Capitain Jack) <Capitain_Jack@yahoo.com>  Thu, 22 Oct 2026 12:48:38 -0300
+
 stereo-declare (1.3.0-1) unstable; urgency=medium
 
   * New: Declaration.windows_of() in stereo_declare.py, the one top-level

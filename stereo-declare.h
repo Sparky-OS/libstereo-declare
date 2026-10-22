@@ -13,7 +13,7 @@ extern "C" {
  * header's version, stereo_declare_version() the loaded library's. */
 #define STEREO_DECLARE_VERSION_MAJOR 1
 #define STEREO_DECLARE_VERSION_MINOR 3
-#define STEREO_DECLARE_VERSION_PATCH 0
+#define STEREO_DECLARE_VERSION_PATCH 1
 #define STEREO_DECLARE_VERSION_ENCODE(major, minor, patch) (((major) << 16) | ((minor) << 8) | (patch))
 #define STEREO_DECLARE_VERSION \
     STEREO_DECLARE_VERSION_ENCODE(STEREO_DECLARE_VERSION_MAJOR, STEREO_DECLARE_VERSION_MINOR, STEREO_DECLARE_VERSION_PATCH)

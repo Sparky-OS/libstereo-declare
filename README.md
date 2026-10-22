@@ -8,7 +8,7 @@ The program never needs to know which screen it is on.
 
 It is a small C library (MIT) for X11 and Wayland, used by the edition's mpv, VLC, Qt Multimedia, MpvQt, Kdenlive, Marble, QEMU, SPICE and others.
 
-**Status:** version 1.3.0, a stable C API with semantic versioning; it works with Stereo KWin in Sparky Stereo OS, Daniel Ramos's edition of SparkyLinux (by Paweł "pavroo" Pijanowski). On other desktops the calls return `-ENOTSUP`, nothing is sent, and the window stays an ordinary 2D window.
+**Status:** version 1.3.1, a stable C API with semantic versioning; it works with Stereo KWin in Sparky Stereo OS, Daniel Ramos's edition of SparkyLinux (by Paweł "pavroo" Pijanowski). On other desktops the calls return `-ENOTSUP`, nothing is sent, and the window stays an ordinary 2D window.
 
 ## Start here
 
