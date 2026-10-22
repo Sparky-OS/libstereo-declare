@@ -23,9 +23,10 @@ struct wl_surface;
 struct wl_event_queue;
 struct wp_content_type_v1;
 
-/* The one stereo format: full side by side, both eyes at full size, the
- * left eye first. Values of kde_stereo_content_v1 and of the X11 property
- * _KDE_NET_WM_STEREO_CONTENT. */
+/* The one stereo format: full side by side, the two eyes next to each
+ * other, the left eye first, each at the resolution it has (never
+ * stretched or squeezed by the program). Values of kde_stereo_content_v1
+ * and of the X11 property _KDE_NET_WM_STEREO_CONTENT. */
 enum stereo_layout {
     STEREO_NONE = 0,
     STEREO_SBS_FULL = 3
@@ -94,8 +95,10 @@ unsigned stereo_supported_wayland(void);
  * The object stays the caller's; removal sets it back to none. */
 int stereo_declare_wayland_use_content_type(struct wl_surface *surface, struct wp_content_type_v1 *content_type);
 /* Declare the surface once; a new call updates the same declaration.
- * Effective with the surface's next commit. Size the surface at one eye's
- * size (wp_viewporter) and attach a buffer holding both eyes. */
+ * Effective with the surface's next commit. Size the surface at the size
+ * one eye is shown at (a wp_viewport destination) and attach a buffer
+ * holding both eyes at their own resolution: the compositor resizes them
+ * once to that size. */
 int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout,
                            enum stereo_class content_class, unsigned subclass);
 /* The format only: the surface's wp_content_type_v1 is left to the program

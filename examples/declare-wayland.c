@@ -73,7 +73,7 @@ static void toplevel_close(void *data, struct xdg_toplevel *toplevel)
     closed = 1;
 }
 
-/* Both eyes side by side at full size: left red, right blue. */
+/* Both eyes side by side, each at its own resolution: left red, right blue. */
 static struct wl_buffer *draw_both_eyes(void)
 {
     const int width = 2 * EYE_WIDTH, height = EYE_HEIGHT, stride = width * 4, size = stride * height;

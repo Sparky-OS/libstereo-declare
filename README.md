@@ -2,7 +2,7 @@
 
 **For programmers:** tell the desktop, with one call, that your window shows a 3D picture, and it reaches every kind of 3D screen.
 
-Your program draws both eyes side by side at full size, the left eye first, and declares the window once.
+Your program hands the desktop both eyes side by side, the left eye first, each at the resolution it has, and declares the window once.
 Stereo KWin, the compositor of Sparky Stereo OS, then shows each eye to its eye: on a 3D television's own 3D modes, as anaglyph on any monitor with red-cyan glasses, on interleaved and frame-sequential displays, or in a headset.
 The program never needs to know which screen it is on.
 

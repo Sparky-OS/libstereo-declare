@@ -5,7 +5,8 @@
 ## What a declaration says
 
 One thing: "this window's picture holds both eyes, full side by side, the left eye first".
-Full side by side means each half holds one eye's complete picture at full size, at whatever resolution the program renders: a 1920x1080 view per eye makes a 3840x1080 picture.
+Full side by side means each half holds one eye's complete picture, at whatever resolution the eye has: a 1920x1080 view per eye makes a 3840x1080 picture, and the two 1920x540 views of a half top-and-bottom 1920x1080 frame make one 3840x540 picture.
+"Full" names that layout, not a size: the program never stretches or squeezes an eye. The size an eye is shown at is the surface's (on Wayland its wp_viewport destination, one eye's size; on X11 the window's), and the compositor resizes the eyes to it once.
 It is HDMI 1.4b's 3D structure "Side-by-Side (Full)" (3D_Structure 0011, the same value 3 that the declaration uses), handed to the compositor instead of a cable.
 A program that reads or makes stereo in any other packing converts it to this one; the compositor then turns it into what each screen needs.
 
