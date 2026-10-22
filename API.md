@@ -1,4 +1,4 @@
-# stereo-declare API, version 1.3
+# stereo-declare API, version 1.4
 
 **For programmers:** how a program declares a 3D window or surface once, on X11 and on Wayland.
 

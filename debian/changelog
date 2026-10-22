@@ -1,3 +1,19 @@
+stereo-declare (1.4.0-1) unstable; urgency=medium
+
+  * New: stereo_declare_x11_one_view_size(), the size one view is shown at
+    for an X11 window whose views have another resolution, written as
+    _KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE (KWin support version 6). The
+    two 1920x540 views of a half top-and-bottom 1920x1080 video stay in a
+    3840x540 window shown at 1920x1080, and the compositor resizes them
+    once. stereo_remove_x11() removes it with the rest, and stereo_declare.py
+    takes it as Declaration(one_view_size=...).
+  * Wayland: the library binds kde-stereo-content-v1 at version 2 when the
+    compositor offers it (a declared surface without a viewport destination
+    is one view wide), and carries the protocol file as Stereo KWin does.
+  * Package descriptions: each eye at the resolution it has.
+
+ -- Daniel Ramos (Capitain Jack) <Capitain_Jack@yahoo.com>  Thu, 22 Oct 2026 17:33:34 -0300
+
 stereo-declare (1.3.1-1) unstable; urgency=medium
 
   * Documentation: full side by side is the layout, the two eyes next to
