@@ -31,6 +31,7 @@ static struct {
     unsigned last_content;
     int type_creates, type_destroys, set_types;
     unsigned last_type;
+    uint32_t manager_version;
 } seen;
 
 struct surface_state {
@@ -125,6 +126,7 @@ static const struct kde_stereo_content_manager_v1_interface manager_impl = {mana
 static void bind_manager(struct wl_client *c, void *data, uint32_t version, uint32_t id)
 {
     (void)data;
+    seen.manager_version = version;
     struct wl_resource *resource = wl_resource_create(c, &kde_stereo_content_manager_v1_interface, version, id);
     wl_resource_set_implementation(resource, &manager_impl, NULL, NULL);
 }
@@ -236,7 +238,7 @@ int main(void)
     server = wl_display_create();
     loop = wl_display_get_event_loop(server);
     wl_global_create(server, &wl_compositor_interface, 4, NULL, bind_compositor);
-    wl_global_create(server, &kde_stereo_content_manager_v1_interface, 1, NULL, bind_manager);
+    struct wl_global *stereo_global = wl_global_create(server, &kde_stereo_content_manager_v1_interface, 2, NULL, bind_manager);
     struct wl_global *type_global = wl_global_create(server, &wp_content_type_manager_v1_interface, 1, NULL, bind_type_manager);
     wl_client_create(server, fds[0]);
     client = wl_display_connect_to_fd(fds[1]);
@@ -251,6 +253,8 @@ int main(void)
     CHECK(stereo_declare_wayland_init(client, NULL) == -EBUSY);
     pump();
     CHECK(stereo_supported_wayland() == 1);
+    /* Version 2: a declared surface without a viewport destination is one view wide. */
+    CHECK(seen.manager_version == 2);
     CHECK(compositor && type_manager);
 
     /* One declaration per surface, the kind through wp_content_type_v1. */
@@ -347,11 +351,15 @@ int main(void)
     CHECK(stereo_supported_wayland() == 0);
     CHECK(stereo_declare_wayland(surface, STEREO_SBS_FULL, STEREO_CLASS_GAME, 0) == -ENOTSUP);
 
-    /* The content type manager announced after the stereo one is still used. */
+    /* The content type manager announced after the stereo one is still used,
+     * and a compositor that offers version 1 only is bound at version 1. */
     wl_global_destroy(type_global);
+    wl_global_destroy(stereo_global);
+    wl_global_create(server, &kde_stereo_content_manager_v1_interface, 1, NULL, bind_manager);
     pump();
     CHECK(stereo_declare_wayland_init(client, NULL) == 0);
     pump();
+    CHECK(stereo_supported_wayland() == 1 && seen.manager_version == 1);
     struct wl_surface *late = wl_compositor_create_surface(compositor);
     const int late_stereo = seen.stereo_creates, late_types = seen.type_creates;
     CHECK(stereo_declare_wayland(late, STEREO_SBS_FULL, STEREO_CLASS_VIDEO, 0) == 0);

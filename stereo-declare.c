@@ -113,9 +113,11 @@ static void global(void *data, struct wl_registry *registry, uint32_t name,
 {
     (void)data;
     if (!strcmp(interface, kde_stereo_content_manager_v1_interface.name) && version >= 1 && !state.manager) {
-        state.manager = wl_registry_bind(registry, name, &kde_stereo_content_manager_v1_interface, 1);
+        /* Version 2 makes a declared surface one view wide when it has no viewport destination. */
+        const uint32_t bound = version < 2 ? version : 2;
+        state.manager = wl_registry_bind(registry, name, &kde_stereo_content_manager_v1_interface, bound);
         state.manager_name = name;
-        state.version = state.manager ? 1 : 0;
+        state.version = state.manager ? bound : 0;
     } else if (!strcmp(interface, wp_content_type_manager_v1_interface.name) && version >= 1 && !state.content_manager) {
         state.content_manager = wl_registry_bind(registry, name, &wp_content_type_manager_v1_interface, 1);
         state.content_manager_name = name;
@@ -166,7 +168,7 @@ int stereo_declare_wayland_init(struct wl_display *display, struct wl_event_queu
 
 unsigned stereo_supported_wayland(void)
 {
-    return state.version;
+    return state.version ? 1 : 0;
 }
 
 int stereo_declare_wayland_use_content_type(struct wl_surface *surface, struct wp_content_type_v1 *content_type)

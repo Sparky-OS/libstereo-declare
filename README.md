@@ -24,7 +24,7 @@ cmake --install build
 ```
 
 Then `pkg-config --cflags --libs stereo-declare`, or in CMake `find_package(StereoDeclare 1.1 CONFIG REQUIRED)` and `StereoDeclare::stereo-declare`.
-It needs Xlib, libwayland-client, wayland-scanner, wayland-protocols (for `content-type-v1`) and the `kde-stereo-content-v1.xml` protocol, which a release carries in `protocol/`.
+It needs Xlib, libwayland-client, wayland-scanner, wayland-protocols (for `content-type-v1`) and the `kde-stereo-content-v1.xml` protocol at version 2, which a release carries in `protocol/` as Stereo KWin carries it.
 
 ## From Python
 

@@ -87,7 +87,10 @@ int stereo_remove_x11(Display *display, Window window);
  * dispatches, commits or disconnects the display. Every surface passed
  * below must belong to this display. */
 int stereo_declare_wayland_init(struct wl_display *display, struct wl_event_queue *queue);
-/* 1 once the compositor's kde_stereo_content_manager_v1 is bound, else 0. */
+/* 1 once the compositor's kde_stereo_content_manager_v1 is bound, else 0.
+ * Since 1.4.0 the library binds version 2 of the protocol when the
+ * compositor offers it: a declared surface without a viewport destination is
+ * then one view wide, half its buffer's width. */
 unsigned stereo_supported_wayland(void);
 /* For a surface that already has a wp_content_type_v1 of the caller's:
  * hand it over before the surface's first declaration, so the library sets

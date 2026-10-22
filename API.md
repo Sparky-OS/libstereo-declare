@@ -93,6 +93,7 @@ Rules:
 - **Initialisation is asynchronous.** Nothing is known until the registry's events have been dispatched; a standalone program does one roundtrip, a toolkit lets its event loop run.
 - **Everything takes effect with the surface's next commit,** which stays the program's: the library never commits, dispatches or disconnects.
 - **A surface that already has a `wp_content_type_v1`** (mpv makes one for its window, for example) is declared with `stereo_declare_wayland_format()`, or hands its object over with `stereo_declare_wayland_use_content_type()` before its first `stereo_declare_wayland()`. Otherwise the library makes a second one, and the protocol answers with an `already_constructed` error that ends the connection. A handed-over object stays the program's; removal sets it back to none.
+- **Protocol version 2.** Since 1.4.0 the library binds version 2 of `kde_stereo_content_manager_v1` when the compositor offers it, and version 1 otherwise: with version 2 a declared surface without a viewport destination is one view wide, half its buffer's width; with a destination, the destination is one view's size in both versions.
 - **The 3D area of an ordinary window** is a subsurface of its own, placed below the window's surface, sized with `wp_viewporter` and declared; the window stays 2D and transparent over the area. Sparky Stereo OS's [stereo-window-3d-area](https://github.com/Sparky-OS/sparky-stereo-os/blob/main/skills/stereo-window-3d-area/SKILL.md) skill shows the pattern in Kdenlive, Marble, Krita and MpvQt.
 
 ## X11 example
@@ -201,7 +202,7 @@ For Wine's Wayland driver, the call belongs in the native backend that owns the 
 
 ## Specifications
 
-- `kde-stereo-content-v1`: [the protocol file](https://github.com/Sparky-OS/plasma-wayland-protocols/blob/stereo3d/src/protocols/kde-stereo-content-v1.xml), values none 0 and side_by_side_full 3.
+- `kde-stereo-content-v1`, version 2: [protocol/kde-stereo-content-v1.xml](protocol/kde-stereo-content-v1.xml), the same file Stereo KWin carries in `src/wayland/protocols/stereo/`; values none 0 and side_by_side_full 3.
 - `wp_content_type_v1`: [wayland-protocols, staging/content-type](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/tree/main/staging/content-type).
 - `wp_viewporter`: [wayland-protocols, stable/viewporter](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/tree/main/stable/viewporter).
 - The packing: HDMI Specification 1.4b, the 3D_Structure field of the HDMI Vendor-Specific InfoFrame, "Side-by-Side (Full)".
