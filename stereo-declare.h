@@ -66,7 +66,8 @@ unsigned stereo_declare_version(void);
 
 /* X11 (and Xwayland): the support version announced on the root window by
  * _KDE_NET_WM_STEREO_CONTENT_SUPPORTED, or zero when absent. Declaring
- * needs version 2 or later. Xlib errors use the caller's handler. */
+ * needs version 2 or later, the size one view is shown at version 6.
+ * Xlib errors use the caller's handler. */
 unsigned stereo_supported_x11(Display *display);
 /* Declare the window once, before or after mapping it; a new call replaces
  * the values. Size the window at one eye's size: from support version 3 the
@@ -78,7 +79,19 @@ int stereo_declare_x11(Display *display, Window window, enum stereo_layout layou
  * property as it is (the program's own, or none). Needs support version 1
  * or later. Declaring STEREO_NONE clears the format. Since 1.1.0. */
 int stereo_declare_x11_format(Display *display, Window window, enum stereo_layout layout);
-/* Delete both properties. */
+/* The size one view is shown at, in display pixels, for a declared window
+ * whose views have another resolution. A half top-and-bottom 1920x1080
+ * video has two views of 1920x540: the program sizes its window at one
+ * view's resolution, 1920x540 (the compositor makes the X11 window 3840x540
+ * to hold both), and gives 1920x1080 here. The X11 window then keeps the
+ * program's own size, its place on screen is one view at this size, and the
+ * compositor resizes each view once, as a Wayland surface's viewport
+ * destination does. Writes _KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE; needs
+ * support version 6. Width and height 0 remove it; each is at most 32767.
+ * Since 1.4.0. */
+int stereo_declare_x11_one_view_size(Display *display, Window window, unsigned width, unsigned height);
+/* Delete the declaration's properties: the layout, the class and the size
+ * one view is shown at. */
 int stereo_remove_x11(Display *display, Window window);
 
 /* Wayland: one caller-owned display per thread. Call on the display's

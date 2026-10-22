@@ -29,6 +29,8 @@ GAME_GL = 3
 
 SONAME = 'libstereo-declare.so.1'
 MINIMUM_VERSION = 2
+# the support version that takes the size one view is shown at
+ONE_VIEW_SIZE_VERSION = 6
 
 
 class StereoUnavailable(RuntimeError):
@@ -74,9 +76,12 @@ class Declaration:
     on_declare, when given, is called with the window id each time a window is declared.
     layout, content_class and subclass are the values of stereo-declare.h; the default
     is full side by side, left eye first, of a game that wraps OpenGL or Direct3D.
+    one_view_size, when given as (width, height), is the size one view is shown at, in
+    display pixels, for windows whose views have another resolution
+    (stereo_declare_x11_one_view_size()); it needs support version 6.
     """
 
-    def __init__(self, layout=SBS_FULL, content_class=CLASS_GAME, subclass=GAME_GL, on_declare=None):
+    def __init__(self, layout=SBS_FULL, content_class=CLASS_GAME, subclass=GAME_GL, on_declare=None, one_view_size=None):
         try:
             from Xlib import display
             self.x = display.Display()
@@ -86,6 +91,7 @@ class Declaration:
             raise StereoUnavailable(f'Cannot open X11 display: {exc}') from exc
         self.layout, self.content_class, self.subclass = layout, content_class, subclass
         self.on_declare = on_declare
+        self.one_view_size = one_view_size
         self.xlib = ctypes.CDLL('libX11.so.6')
         self.xlib.XOpenDisplay.argtypes = [ctypes.c_char_p]
         self.xlib.XOpenDisplay.restype = ctypes.c_void_p
@@ -118,6 +124,11 @@ class Declaration:
         if self.version < MINIMUM_VERSION:
             self.close()
             raise StereoUnavailable(f'KWin stereo declaration support version {MINIMUM_VERSION} is required')
+        if one_view_size is not None:
+            if self.version < ONE_VIEW_SIZE_VERSION:
+                self.close()
+                raise StereoUnavailable(f'KWin stereo declaration support version {ONE_VIEW_SIZE_VERSION} is required for the size one view is shown at')
+            self.lib.stereo_declare_x11_one_view_size.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_uint, ctypes.c_uint]
         self.pid_atom = self.x.intern_atom('_NET_WM_PID')
         self.active = set()
         self.declared_any = False
@@ -174,6 +185,8 @@ class Declaration:
         for wid in wanted - self.active:
             self.error = 0
             result = self.lib.stereo_declare_x11(self.native, wid, self.layout, self.content_class, self.subclass)
+            if result == 0 and self.one_view_size is not None:
+                result = self.lib.stereo_declare_x11_one_view_size(self.native, wid, *self.one_view_size)
             self.xlib.XSync(self.native, 0)
             if result == 0 and not self.error:
                 self.active.add(wid)

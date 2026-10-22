@@ -5,6 +5,7 @@
 Your program hands the desktop both eyes side by side, the left eye first, each at the resolution it has, and declares the window once.
 Stereo KWin, the compositor of Sparky Stereo OS, then shows each eye to its eye: on a 3D television's own 3D modes, as anaglyph on any monitor with red-cyan glasses, on interleaved and frame-sequential displays, or in a headset.
 The program never needs to know which screen it is on.
+On X11, where a window's buffer is its own pixmap, a program whose views are shown at another size than their resolution (the two 1920x540 views of a half top-and-bottom video, shown at 1920x1080) also declares the size one view is shown at, so the compositor still resizes them once (since 1.4.0).
 
 It is a small C library (MIT) for X11 and Wayland, used by the edition's mpv, VLC, Qt Multimedia, MpvQt, Kdenlive, Marble, QEMU, SPICE and others.
 

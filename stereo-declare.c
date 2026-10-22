@@ -77,6 +77,25 @@ int stereo_declare_x11_format(Display *display, Window window, enum stereo_layou
     return 0;
 }
 
+int stereo_declare_x11_one_view_size(Display *display, Window window, unsigned width, unsigned height)
+{
+    if (!display || !window || (!width) != (!height) || width > 32767 || height > 32767) {
+        return -EINVAL;
+    }
+    if (stereo_supported_x11(display) < 6) {
+        return -ENOTSUP;
+    }
+    const Atom atom = XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE", False);
+    if (!width) {
+        XDeleteProperty(display, window, atom);
+    } else {
+        const unsigned long size[2] = {width, height};
+        XChangeProperty(display, window, atom, XA_CARDINAL, 32, PropModeReplace, (const unsigned char *)size, 2);
+    }
+    XFlush(display);
+    return 0;
+}
+
 int stereo_remove_x11(Display *display, Window window)
 {
     if (!display || !window) {
@@ -84,6 +103,7 @@ int stereo_remove_x11(Display *display, Window window)
     }
     XDeleteProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT", False));
     XDeleteProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CLASS", False));
+    XDeleteProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE", False));
     XFlush(display);
     return 0;
 }

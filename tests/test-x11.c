@@ -122,6 +122,37 @@ int main(void)
     CHECK(stereo_declare_x11_format(display, window, STEREO_SBS_FULL) == -ENOTSUP);
     CHECK(stereo_remove_x11(display, window) == 0);
 
+    /* The size one view is shown at needs support version 6. */
+    announce(display, 5);
+    CHECK(stereo_declare_x11_one_view_size(display, window, 1920, 1080) == -ENOTSUP);
+    XSync(display, False);
+    CHECK(property(display, window, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE", values) == -1);
+    announce(display, 6);
+    CHECK(stereo_supported_x11(display) == 6);
+    CHECK(stereo_declare_x11(display, window, STEREO_SBS_FULL, STEREO_CLASS_VIDEO, STEREO_VIDEO_LEGACY) == 0);
+    CHECK(stereo_declare_x11_one_view_size(display, window, 1920, 1080) == 0);
+    XSync(display, False);
+    CHECK(property(display, window, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE", values) == 2 && values[0] == 1920 && values[1] == 1080);
+    /* A new size replaces it; one side zero or beyond X11's coordinates is refused and changes nothing. */
+    CHECK(stereo_declare_x11_one_view_size(display, window, 1280, 720) == 0);
+    CHECK(stereo_declare_x11_one_view_size(display, window, 0, 720) == -EINVAL);
+    CHECK(stereo_declare_x11_one_view_size(display, window, 1280, 0) == -EINVAL);
+    CHECK(stereo_declare_x11_one_view_size(display, window, 32768, 720) == -EINVAL);
+    CHECK(stereo_declare_x11_one_view_size(display, 0, 1280, 720) == -EINVAL);
+    CHECK(stereo_declare_x11_one_view_size(NULL, window, 1280, 720) == -EINVAL);
+    XSync(display, False);
+    CHECK(property(display, window, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE", values) == 2 && values[0] == 1280 && values[1] == 720);
+    /* Zero removes it and keeps the declaration; removal deletes it with the rest. */
+    CHECK(stereo_declare_x11_one_view_size(display, window, 0, 0) == 0);
+    XSync(display, False);
+    CHECK(property(display, window, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE", values) == -1);
+    CHECK(property(display, window, "_KDE_NET_WM_STEREO_CONTENT", values) == 1 && values[0] == 3);
+    CHECK(stereo_declare_x11_one_view_size(display, window, 32767, 32767) == 0);
+    CHECK(stereo_remove_x11(display, window) == 0);
+    XSync(display, False);
+    CHECK(property(display, window, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE", values) == -1);
+    CHECK(property(display, window, "_KDE_NET_WM_STEREO_CONTENT", values) == -1);
+
     XDestroyWindow(display, window);
     XCloseDisplay(display);
     if (failures) {

@@ -105,6 +105,21 @@ check(read(replacement, kind) == [3, 2], 'the sub-class is the caller\'s')
 d.close()
 check(read(replacement, layout) is None, 'close removes what is declared')
 
+view_size = x.intern_atom('_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE')
+try:
+    stereo_declare.Declaration(one_view_size=(1920, 1080))
+except stereo_declare.StereoUnavailable:
+    check(True, 'the size one view is shown at needs support version 6')
+else:
+    check(False, 'the size one view is shown at needs support version 6')
+root.change_property(support, Xatom.CARDINAL, 32, [6])
+x.sync()
+d = stereo_declare.Declaration(one_view_size=(1920, 1080))
+d.update({replacement.id})
+check(read(replacement, layout) == [3] and read(replacement, view_size) == [1920, 1080], 'the size one view is shown at is written with the declaration')
+d.close()
+check(read(replacement, view_size) is None, 'close removes the size one view is shown at')
+
 pids = {os.getpid()}
 check(os.getpid() in stereo_declare.descendants(os.getpid(), pids), 'the process tree includes its root')
 

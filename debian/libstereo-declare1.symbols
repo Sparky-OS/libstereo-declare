@@ -8,6 +8,7 @@ libstereo-declare.so.1 libstereo-declare1 #MINVER#
  stereo_declare_wayland_use_content_type@Base 1.0.0
  stereo_declare_x11@Base 1.0.0
  stereo_declare_x11_format@Base 1.1.0
+ stereo_declare_x11_one_view_size@Base 1.4.0
  stereo_remove_wayland@Base 1.0.0
  stereo_remove_x11@Base 1.0.0
  stereo_supported_wayland@Base 1.0.0

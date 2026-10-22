@@ -6,7 +6,7 @@
 
 One thing: "this window's picture holds both eyes, full side by side, the left eye first".
 Full side by side means each half holds one eye's complete picture, at whatever resolution the eye has: a 1920x1080 view per eye makes a 3840x1080 picture, and the two 1920x540 views of a half top-and-bottom 1920x1080 frame make one 3840x540 picture.
-"Full" names that layout, not a size: the program never stretches or squeezes an eye. The size an eye is shown at is the surface's (on Wayland its wp_viewport destination, one eye's size; on X11 the window's), and the compositor resizes the eyes to it once.
+"Full" names that layout, not a size: the program never stretches or squeezes an eye. The size an eye is shown at is the surface's (on Wayland its wp_viewport destination, one view's size; on X11 the window's, or the size one view is shown at when the program declares it, since 1.4.0), and the compositor resizes the eyes to it once.
 It is HDMI 1.4b's 3D structure "Side-by-Side (Full)" (3D_Structure 0011, the same value 3 that the declaration uses), handed to the compositor instead of a cable.
 A program that reads or makes stereo in any other packing converts it to this one; the compositor then turns it into what each screen needs.
 
@@ -32,7 +32,8 @@ Every call returns 0 or a negative `errno` value (`-EINVAL` for a bad argument, 
 | `stereo_supported_x11(display)` | 1.0.0 | The version the window manager announces on the root window, 0 when none |
 | `stereo_declare_x11(display, window, layout, class, subclass)` | 1.0.0 | Declare an X11 window; a new call replaces the values |
 | `stereo_declare_x11_format(display, window, layout)` | 1.1.0 | Declare the format only; the class property stays the program's |
-| `stereo_remove_x11(display, window)` | 1.0.0 | Remove the declaration (both properties) |
+| `stereo_declare_x11_one_view_size(display, window, width, height)` | 1.4.0 | Declare the size one view is shown at, for views of another resolution; 0, 0 removes it |
+| `stereo_remove_x11(display, window)` | 1.0.0 | Remove the declaration (all its properties) |
 | `stereo_declare_wayland_init(display, queue)` | 1.0.0 | Start, once per thread, on the display's dispatch thread |
 | `stereo_supported_wayland()` | 1.0.0 | 1 once the compositor's declaration global is bound, else 0 |
 | `stereo_declare_wayland_use_content_type(surface, content_type)` | 1.0.0 | Hand over the surface's existing `wp_content_type_v1` |
@@ -48,6 +49,8 @@ Every call returns 0 or a negative `errno` value (`-EINVAL` for a bad argument, 
 | `layout` | `STEREO_SBS_FULL` (3), or `STEREO_NONE` (0) to clear it | `kde_stereo_content_v1.set_content`; X11 `_KDE_NET_WM_STEREO_CONTENT` |
 | `class`, the kind | `STEREO_CLASS_NONE` 0, `_PHOTO` 1, `_VIDEO` 2, `_GAME` 3, `_SCIENTIFIC` 4 | Wayland: `wp_content_type_v1.set_content_type` with the same value (scientific is sent as none). X11: the first value of `_KDE_NET_WM_STEREO_CONTENT_CLASS` |
 | `subclass` | 0 unspecified; game: `STEREO_GAME_VR` 1, `_3D` 2, `_GL` 3, `_STEREOGL` 4; video: `STEREO_VIDEO_LEGACY` 1, `_CURRENT` 2; scientific: `STEREO_SCIENTIFIC_VR` 1, `_STEREOGL` 2 | X11 only, the second value of `_KDE_NET_WM_STEREO_CONTENT_CLASS`; Wayland has no place for it |
+
+| `width`, `height` of one view | display pixels, 1 to 32767 each, or both 0 to remove | X11 `_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE` |
 
 Any other layout is refused with `-EINVAL`, and nothing is sent; class and sub-class must fit in 8 bits.
 
@@ -115,13 +118,30 @@ if (supported >= 2) {
     /* Draw the left eye in the left half of the window's current width,
      * the right eye in the right half. */
 }
-/* Removal deletes both properties: */
+/* Removal deletes all the declaration's properties: */
 stereo_remove_x11(display, window);
 ```
 
+**Views of another resolution than their place.** On X11 a window's buffer is its own pixmap, so a program whose views are smaller or larger than the size they are shown at declares that size, as a Wayland program sets its viewport destination.
+A half top-and-bottom 1920x1080 video has two views of 1920x540: the program creates its window at one view's resolution and declares the size one view is shown at.
+
+```c
+if (stereo_supported_x11(display) >= 6) {
+    /* One view's resolution: the window manager makes the X11 window 3840x540. */
+    Window window = XCreateSimpleWindow(display, DefaultRootWindow(display), 0, 0, 1920, 540, 0, 0, 0);
+    stereo_declare_x11(display, window, STEREO_SBS_FULL, STEREO_CLASS_VIDEO, STEREO_VIDEO_LEGACY);
+    stereo_declare_x11_one_view_size(display, window, 1920, 1080);
+    XMapWindow(display, window);
+    /* Draw each view at 1920x540, side by side: the compositor shows each at the window's place, 1920x1080 to start with. */
+}
+```
+
+The X11 window keeps the program's own size, so the views keep their resolution; the window's place on screen is one view at the declared size, and the compositor resizes each view once to that place, also when the window is maximized or resized.
+A new size changes the place only; declaring 0, 0 removes it, and the window is one view of its own size again.
+
 Rules:
-- **The properties:** `_KDE_NET_WM_STEREO_CONTENT` is CARDINAL/32 with one value (0 or 3); `_KDE_NET_WM_STEREO_CONTENT_CLASS` is CARDINAL/32 with two values, class then sub-class. They are written as two requests and flushed, not as one transaction.
-- **The root window's `_KDE_NET_WM_STEREO_CONTENT_SUPPORTED`** gives the version the window manager understands: 1 the layout, 2 also the class and sub-class, 3 also sizing (the program's own sizes are one eye's, and the window manager makes the X11 window hold both). `stereo_declare_x11()` declares from version 2 on, `stereo_declare_x11_format()` from version 1.
+- **The properties:** `_KDE_NET_WM_STEREO_CONTENT` is CARDINAL/32 with one value (0 or 3); `_KDE_NET_WM_STEREO_CONTENT_CLASS` is CARDINAL/32 with two values, class then sub-class; `_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE` is CARDINAL/32 with two values, the width and the height one view is shown at, in display pixels. They are written as separate requests and flushed, not as one transaction.
+- **The root window's `_KDE_NET_WM_STEREO_CONTENT_SUPPORTED`** gives the version the window manager understands: 1 the layout, 2 also the class and sub-class, 3 also sizing (the program's own sizes are one view's, and the window manager makes the X11 window hold both), 6 also the size one view is shown at (4 and 5 are for Mesa's packed buffers and child windows, which this library does not write). `stereo_declare_x11()` declares from version 2 on, `stereo_declare_x11_format()` from version 1, `stereo_declare_x11_one_view_size()` from version 6.
 - **Xlib errors** go to the program's own error handler; a flushed request is not proof that the server accepted it.
 - **Under Xwayland** a declared child window becomes a surface of its own in Sparky Stereo OS's Xwayland, so the 3D area of an X11 program works the same way as on Wayland.
 
@@ -132,7 +152,7 @@ It loads `libstereo-declare.so.1` with ctypes, so it makes the declaration the C
 
 | Name | What it does |
 |---|---|
-| `Declaration(layout, content_class, subclass, on_declare)` | Opens the display and checks that the window manager takes declarations (version 2 or later); otherwise raises `StereoUnavailable`, a `RuntimeError`, which says why. The defaults are full side by side, left eye first, class game, sub-class GL wrapper. |
+| `Declaration(layout, content_class, subclass, on_declare, one_view_size)` | Opens the display and checks that the window manager takes declarations (version 2 or later, 6 with `one_view_size`); otherwise raises `StereoUnavailable`, a `RuntimeError`, which says why. The defaults are full side by side, left eye first, class game, sub-class GL wrapper. `one_view_size`, a `(width, height)` pair (since 1.4.0), is written with each declaration. |
 | `Declaration.candidates(state, pids, steam_class)` | The one window of the game's processes (or of Proton's `steam_app_ID` class) that has the size and the executable's class that `state` names, or the window `state` names by id. Several matches count as none. |
 | `Declaration.windows_of(pids)` | The one viewable top-level window of the given processes (several count as none): for a program that draws full side by side itself, so no wrapper reports its window. |
 | `Declaration.update(wanted)` | Declares the windows in `wanted`, removes the declaration of those that are no longer in it; a window that vanished in between is not an error. |
