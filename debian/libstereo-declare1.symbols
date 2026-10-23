@@ -9,6 +9,12 @@ libstereo-declare.so.1 libstereo-declare1 #MINVER#
  stereo_declare_x11@Base 1.0.0
  stereo_declare_x11_format@Base 1.1.0
  stereo_declare_x11_one_view_size@Base 1.4.0
+ stereo_depth_supported_wayland@Base 1.5.0
+ stereo_depth_wayland_set_desktop_depth@Base 1.5.0
+ stereo_depth_wayland_set_place@Base 1.5.0
+ stereo_depth_wayland_unset_place@Base 1.5.0
+ stereo_depth_wayland_unwatch@Base 1.5.0
+ stereo_depth_wayland_watch@Base 1.5.0
  stereo_remove_wayland@Base 1.0.0
  stereo_remove_x11@Base 1.0.0
  stereo_supported_wayland@Base 1.0.0

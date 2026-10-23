@@ -9,7 +9,7 @@ On X11, where a window's buffer is its own pixmap, a program whose views are sho
 
 It is a small C library (MIT) for X11 and Wayland, used by the edition's mpv, VLC, Qt Multimedia, MpvQt, Kdenlive, Marble, QEMU, SPICE and others.
 
-**Status:** version 1.4.0, a stable C API with semantic versioning; it works with Stereo KWin in Sparky Stereo OS, Daniel Ramos's edition of SparkyLinux (by Paweł "pavroo" Pijanowski). On other desktops the calls return `-ENOTSUP`, nothing is sent, and the window stays an ordinary 2D window.
+**Status:** version 1.5.0, a stable C API with semantic versioning; it works with Stereo KWin in Sparky Stereo OS, Daniel Ramos's edition of SparkyLinux (by Paweł "pavroo" Pijanowski). On other desktops the calls return `-ENOTSUP`, nothing is sent, and the window stays an ordinary 2D window.
 
 ## Start here
 

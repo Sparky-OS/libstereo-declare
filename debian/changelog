@@ -1,3 +1,22 @@
+stereo-declare (1.5.0-1) unstable; urgency=medium
+
+  * New: desktop depth, with version 3 of kde_stereo_content_manager_v1.
+    stereo_depth_wayland_watch() follows a surface's depth state, whether
+    its elements may be shown in depth now (it is on a stereo output and
+    awake, not lying flat behind the active window) and which of its edges
+    lie on its output's edge; stereo_depth_wayland_set_desktop_depth()
+    marks the pair a toolkit draws once per eye as the desktop's own depth,
+    not stereo content; stereo_depth_wayland_set_place() and
+    stereo_depth_wayland_unset_place() declare where a popup surface sits,
+    from -1 (the sunk limit) to 1 (the popped limit);
+    stereo_depth_supported_wayland() says whether the compositor follows
+    desktop depth. Without version 3 the calls return -ENOTSUP and a
+    surface is never awake.
+  * The library binds version 3 when the compositor offers it and carries
+    the plasma-wayland-protocols fork's version 3 of the protocol file.
+
+ -- Daniel Ramos (Capitain Jack) <Capitain_Jack@yahoo.com>  Fri, 23 Oct 2026 14:30:43 -0300
+
 stereo-declare (1.4.0-1) unstable; urgency=medium
 
   * New: stereo_declare_x11_one_view_size(), the size one view is shown at
