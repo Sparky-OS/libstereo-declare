@@ -12,7 +12,7 @@ extern "C" {
  * meaning below; a minor version only adds. STEREO_DECLARE_VERSION is the
  * header's version, stereo_declare_version() the loaded library's. */
 #define STEREO_DECLARE_VERSION_MAJOR 1
-#define STEREO_DECLARE_VERSION_MINOR 5
+#define STEREO_DECLARE_VERSION_MINOR 6
 #define STEREO_DECLARE_VERSION_PATCH 0
 #define STEREO_DECLARE_VERSION_ENCODE(major, minor, patch) (((major) << 16) | ((minor) << 8) | (patch))
 #define STEREO_DECLARE_VERSION \
@@ -90,6 +90,27 @@ int stereo_declare_x11_format(Display *display, Window window, enum stereo_layou
  * support version 6. Width and height 0 remove it; each is at most 32767.
  * Since 1.4.0. */
 int stereo_declare_x11_one_view_size(Display *display, Window window, unsigned width, unsigned height);
+/* A version-7 proposal for the window's place, in the same display pixels
+ * as one_view_size. The serial identifies this proposal, never zero. */
+struct stereo_x11_one_view_request {
+    unsigned serial;
+    unsigned width;
+    unsigned height;
+};
+/* Inspect a PropertyNotify from the caller's event loop. Returns 1 for a
+ * valid proposal, 0 for an unrelated event, or a negative errno. The caller
+ * selects PropertyChangeMask on its window; this call never changes masks,
+ * consumes events or resizes anything. Pass NULL for event to read the
+ * current proposal (0 if absent). Since 1.6.0; needs support version 7. */
+int stereo_x11_one_view_event(Display *display, Window window, const XEvent *event,
+                              struct stereo_x11_one_view_request *request);
+/* After choosing and drawing the buffer, answer the proposal with the size
+ * one view should be shown at. Writes ONE_VIEW_SIZE then sends the serial
+ * acknowledgement. A superseded serial is ignored by the compositor.
+ * Width and height must each be 1..32767. Since 1.6.0. */
+int stereo_declare_x11_one_view_commit(Display *display, Window window,
+                                      const struct stereo_x11_one_view_request *request,
+                                      unsigned width, unsigned height);
 /* Delete the declaration's properties: the layout, the class and the size
  * one view is shown at. */
 int stereo_remove_x11(Display *display, Window window);

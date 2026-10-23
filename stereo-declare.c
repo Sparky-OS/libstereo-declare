@@ -96,6 +96,78 @@ int stereo_declare_x11_one_view_size(Display *display, Window window, unsigned w
     return 0;
 }
 
+int stereo_x11_one_view_event(Display *display, Window window, const XEvent *event,
+                              struct stereo_x11_one_view_request *request)
+{
+    if (!display || !window || !request) {
+        return -EINVAL;
+    }
+    if (event && (event->type != PropertyNotify || event->xproperty.window != window
+                  || event->xproperty.state != PropertyNewValue)) {
+        return 0;
+    }
+    Atom atom = XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_CONFIGURE", True);
+    if (event && event->xproperty.atom != atom) {
+        return 0;
+    }
+    if (stereo_supported_x11(display) < 7) {
+        return -ENOTSUP;
+    }
+    if (atom == None) {
+        return 0;
+    }
+    Atom type;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *data = NULL;
+    int result = -EINVAL;
+    if (XGetWindowProperty(display, window, atom, 0, 3, False, XA_CARDINAL,
+                           &type, &format, &count, &remaining, &data) == Success) {
+        if (type == None) {
+            result = 0;
+        } else if (type == XA_CARDINAL && format == 32 && count == 3 && remaining == 0) {
+            const unsigned long *values = (const unsigned long *)data;
+            if (values[0] && values[0] <= UINT32_MAX && values[1] && values[1] <= 32767
+                && values[2] && values[2] <= 32767) {
+                *request = (struct stereo_x11_one_view_request){values[0], values[1], values[2]};
+                result = 1;
+            }
+        }
+    }
+    XFree(data);
+    return result;
+}
+
+int stereo_declare_x11_one_view_commit(Display *display, Window window,
+                                      const struct stereo_x11_one_view_request *request,
+                                      unsigned width, unsigned height)
+{
+    if (!display || !window || !request || !request->serial || !width || !height || width > 32767 || height > 32767) {
+        return -EINVAL;
+    }
+    if (stereo_supported_x11(display) < 7) {
+        return -ENOTSUP;
+    }
+    int result = stereo_declare_x11_one_view_size(display, window, width, height);
+    if (result) {
+        return result;
+    }
+    XEvent event;
+    memset(&event, 0, sizeof(event));
+    event.xclient.type = ClientMessage;
+    event.xclient.display = display;
+    event.xclient.window = window;
+    event.xclient.message_type = XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_COMMIT", False);
+    event.xclient.format = 32;
+    event.xclient.data.l[0] = request->serial;
+    if (!XSendEvent(display, DefaultRootWindow(display), False,
+                    SubstructureRedirectMask | SubstructureNotifyMask, &event)) {
+        return -EIO;
+    }
+    XFlush(display);
+    return 0;
+}
+
 int stereo_remove_x11(Display *display, Window window)
 {
     if (!display || !window) {

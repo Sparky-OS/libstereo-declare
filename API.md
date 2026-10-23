@@ -156,7 +156,8 @@ if (stereo_supported_x11(display) >= 6) {
 }
 ```
 
-The X11 window keeps the program's own size, so the views keep their resolution; the window's place on screen is one view at the declared size, and the compositor resizes each view once to that place, also when the window is maximized or resized.
+The X11 window keeps the program's own size, so the views keep their resolution; the window's place on screen is one view at the declared size, and the compositor resizes each view once to that place.
+Since support version 7, compositor-driven changes of the place are negotiated as described below.
 A new size changes the place only; declaring 0, 0 removes it, and the window is one view of its own size again.
 
 Rules:
@@ -246,3 +247,47 @@ For Wine's Wayland driver, the call belongs in the native backend that owns the 
 - `wp_content_type_v1`: [wayland-protocols, staging/content-type](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/tree/main/staging/content-type).
 - `wp_viewporter`: [wayland-protocols, stable/viewporter](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/tree/main/stable/viewporter).
 - The packing: HDMI Specification 1.4b, the 3D_Structure field of the HDMI Vendor-Specific InfoFrame, "Side-by-Side (Full)".
+
+## X11 place negotiation (1.6.0, support version 7)
+
+A window with `ONE_VIEW_SIZE` separates its native eye raster from its place on screen.
+KWin proposes a new place for interactive resize, maximize, tile, fullscreen and restore; it keeps the old destination until the program answers.
+The proposal is `_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_CONFIGURE` on that same window, type CARDINAL/32, exactly three values: nonzero serial, width, height.
+Dimensions are one view's display pixels, exactly the units of `ONE_VIEW_SIZE`, from 1 to 32767.
+KWin owns this property; a client selects `PropertyChangeMask` and passes its events to `stereo_x11_one_view_event()`.
+It returns 1 with a `stereo_x11_one_view_request`, 0 for an unrelated event or absent property, or negative errno for malformed data or unsupported desktops.
+Passing a null event reads the current proposal, allowing a client to recover after coalescing events.
+The caller still owns its event loop and event mask.
+
+The program chooses its native buffer and layout, renders it, and calls `stereo_declare_x11_one_view_commit(display, window, &request, width, height)`.
+That writes the existing client-owned `ONE_VIEW_SIZE` and sends `_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_COMMIT` as a ClientMessage to the root, with SubstructureRedirectMask | SubstructureNotifyMask, format 32, the window in `window`, serial in `data.l[0]`, and four zero words.
+KWin accepts only the current nonzero serial, reads the valid two-value `ONE_VIEW_SIZE`, and applies that destination with the client's next surface commit.
+The answer may differ from the proposal; the program's answer determines the place.
+A stale answer, malformed property or unresponsive client never authorizes stretching the old frame.
+Proposals can supersede earlier ones; the client may discard superseded work and answer the newest serial.
+Serials wrap through nonzero 32-bit values and identify an outstanding proposal, not time.
+
+While a proposal is pending, ordinary `ONE_VIEW_SIZE` writes do not change the destination until the matching commit message arrives.
+Outside a pending proposal the 1.4.0 setter still sets the place directly.
+Removing the declaration or `ONE_VIEW_SIZE` cancels outstanding negotiation and removes the compositor-owned proposal.
+Version-6 clients remain able to choose their own placement; on a version-7 desktop they must adopt this exchange to respond to compositor-driven size changes.
+A successful library return proves requests were sent, not that the compositor accepted them.
+
+The ordinary X11 ConfigureNotify stream continues to describe native program geometry; a place proposal is never disguised as an actual X11 resize.
+The compositor holds Xwayland surface commits during the exchange, using its existing commit gating mechanism, then releases them on a valid answer.
+Clients that use `_NET_WM_SYNC_REQUEST` retain their ordinary repaint protocol; this extension does not synthesize its counter acknowledgements or reinterpret its ConfigureNotify events.
+Size hints for a declared one-view place use one-view display units; neither the packed width nor the native/display raster ratio multiplies the hints.
+KWin honors min/max aspect and base-size rules in these units, except an explicit window rule disabling strict geometry.
+Fullscreen still proposes the output's whole place so a client can pad its canvas instead of stretching its picture.
+
+### Why this is a separate extension
+
+[ICCCM 4.1.5](https://xorg.freedesktop.org/archive/current/doc/xorg-docs/icccm/icccm.html#configuring_the_window) says a refused configure receives the “(unchanged) geometry of the window”.
+A synthetic event therefore cannot stand for an unaccepted destination request while native geometry stays fixed.
+[ICCCM 4.2.8](https://xorg.freedesktop.org/archive/current/doc/xorg-docs/icccm/icccm.html#redirecting_requests) requires a ResizeRedirect recipient to configure “the width and height specified”.
+That changes the X11 drawable and cannot preserve an independently chosen eye raster.
+[ICCCM 4.1.2.3](https://xorg.freedesktop.org/archive/current/doc/xorg-docs/icccm/icccm.html#wm_normal_hints_property) specifies aspect fractions with “the numerator first and the denominator second”.
+Its explicit base size is subtracted for aspect calculations; the minimum is not a substitute for this purpose.
+[EWMH 6.2](https://specifications.freedesktop.org/wm/latest/ar01s06.html) synchronizes repaint using “message/ConfigureNotify pairs”.
+It describes completion of actual configure work, not a second independently sized destination.
+These existing mechanisms keep their meanings; root support version 7 announces the additional exchange.
