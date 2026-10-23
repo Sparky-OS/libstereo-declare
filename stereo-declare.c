@@ -116,6 +116,15 @@ struct declaration {
     struct declaration *next;
 };
 
+/* One surface's kde_stereo_depth_v1, made by watching it or by marking it. */
+struct depth_follower {
+    struct wl_surface *surface;
+    struct kde_stereo_depth_v1 *depth;
+    stereo_depth_listener listener;
+    void *data;
+    struct depth_follower *next;
+};
+
 static _Thread_local struct {
     struct wl_display *display;
     struct wl_registry *registry;
@@ -126,6 +135,7 @@ static _Thread_local struct {
     uint32_t content_manager_name;
     unsigned version;
     struct declaration *declarations;
+    struct depth_follower *followers;
 } state;
 
 static void global(void *data, struct wl_registry *registry, uint32_t name,
@@ -133,8 +143,9 @@ static void global(void *data, struct wl_registry *registry, uint32_t name,
 {
     (void)data;
     if (!strcmp(interface, kde_stereo_content_manager_v1_interface.name) && version >= 1 && !state.manager) {
-        /* Version 2 makes a declared surface one view wide when it has no viewport destination. */
-        const uint32_t bound = version < 2 ? version : 2;
+        /* Version 2 makes a declared surface one view wide when it has no viewport destination;
+         * version 3 follows surfaces' desktop depth. */
+        const uint32_t bound = version < 3 ? version : 3;
         state.manager = wl_registry_bind(registry, name, &kde_stereo_content_manager_v1_interface, bound);
         state.manager_name = name;
         state.version = state.manager ? bound : 0;
@@ -306,6 +317,9 @@ void stereo_declare_wayland_finish(void)
     while (state.declarations) {
         stereo_remove_wayland(state.declarations->surface);
     }
+    while (state.followers) {
+        stereo_depth_wayland_unwatch(state.followers->surface);
+    }
     if (state.manager) {
         kde_stereo_content_manager_v1_destroy(state.manager);
     }
@@ -316,4 +330,131 @@ void stereo_declare_wayland_finish(void)
         wl_registry_destroy(state.registry);
     }
     memset(&state, 0, sizeof(state));
+}
+
+unsigned stereo_depth_supported_wayland(void)
+{
+    return state.manager && state.version >= 3 ? 1 : 0;
+}
+
+static void depth_state(void *data, struct kde_stereo_depth_v1 *depth, uint32_t awake, uint32_t output_edges)
+{
+    (void)depth;
+    const struct depth_follower *follower = data;
+    if (follower->listener) {
+        const struct stereo_depth_state current = {awake, output_edges};
+        follower->listener(follower->data, follower->surface, &current);
+    }
+}
+
+static const struct kde_stereo_depth_v1_listener depth_listener = {depth_state};
+
+/* The surface's follower, made when @a create; NULL with errno-style @a error set otherwise. */
+static struct depth_follower *follower_of(struct wl_surface *surface, int create, int *error)
+{
+    if (!surface) {
+        *error = -EINVAL;
+        return NULL;
+    }
+    if (!stereo_depth_supported_wayland()) {
+        *error = -ENOTSUP;
+        return NULL;
+    }
+    for (struct depth_follower *entry = state.followers; entry; entry = entry->next) {
+        if (entry->surface == surface) {
+            return entry;
+        }
+    }
+    if (!create) {
+        *error = -EINVAL;
+        return NULL;
+    }
+    struct depth_follower *entry = calloc(1, sizeof(*entry));
+    if (!entry) {
+        *error = -ENOMEM;
+        return NULL;
+    }
+    entry->surface = surface;
+    entry->depth = kde_stereo_content_manager_v1_get_depth(state.manager, surface);
+    if (!entry->depth) {
+        free(entry);
+        *error = -ENOMEM;
+        return NULL;
+    }
+    kde_stereo_depth_v1_add_listener(entry->depth, &depth_listener, entry);
+    entry->next = state.followers;
+    state.followers = entry;
+    return entry;
+}
+
+int stereo_depth_wayland_watch(struct wl_surface *surface, stereo_depth_listener listener, void *data)
+{
+    if (!surface || !listener) {
+        return -EINVAL;
+    }
+    int error = 0;
+    struct depth_follower *entry = follower_of(surface, 1, &error);
+    if (!entry) {
+        return error;
+    }
+    entry->listener = listener;
+    entry->data = data;
+    return 0;
+}
+
+int stereo_depth_wayland_unwatch(struct wl_surface *surface)
+{
+    if (!surface) {
+        return -EINVAL;
+    }
+    struct depth_follower **link = &state.followers;
+    while (*link && (*link)->surface != surface) {
+        link = &(*link)->next;
+    }
+    if (!*link) {
+        return -EINVAL;
+    }
+    struct depth_follower *entry = *link;
+    *link = entry->next;
+    kde_stereo_depth_v1_destroy(entry->depth);
+    free(entry);
+    return 0;
+}
+
+int stereo_depth_wayland_set_desktop_depth(struct wl_surface *surface, int desktop_depth)
+{
+    int error = 0;
+    struct depth_follower *entry = follower_of(surface, 1, &error);
+    if (!entry) {
+        return error;
+    }
+    kde_stereo_depth_v1_set_desktop_depth(entry->depth, desktop_depth ? 1 : 0);
+    return 0;
+}
+
+int stereo_depth_wayland_set_place(struct wl_surface *surface, double depth)
+{
+    int error = 0;
+    struct depth_follower *entry = follower_of(surface, 1, &error);
+    if (!entry) {
+        return error;
+    }
+    if (!(depth >= -1.0)) {
+        depth = -1.0;
+    } else if (depth > 1.0) {
+        depth = 1.0;
+    }
+    kde_stereo_depth_v1_set_place(entry->depth, wl_fixed_from_double(depth));
+    return 0;
+}
+
+int stereo_depth_wayland_unset_place(struct wl_surface *surface)
+{
+    int error = 0;
+    struct depth_follower *entry = follower_of(surface, 1, &error);
+    if (!entry) {
+        return error;
+    }
+    kde_stereo_depth_v1_unset_place(entry->depth);
+    return 0;
 }

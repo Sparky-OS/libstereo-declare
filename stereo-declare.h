@@ -12,7 +12,7 @@ extern "C" {
  * meaning below; a minor version only adds. STEREO_DECLARE_VERSION is the
  * header's version, stereo_declare_version() the loaded library's. */
 #define STEREO_DECLARE_VERSION_MAJOR 1
-#define STEREO_DECLARE_VERSION_MINOR 4
+#define STEREO_DECLARE_VERSION_MINOR 5
 #define STEREO_DECLARE_VERSION_PATCH 0
 #define STEREO_DECLARE_VERSION_ENCODE(major, minor, patch) (((major) << 16) | ((minor) << 8) | (patch))
 #define STEREO_DECLARE_VERSION \
@@ -103,7 +103,8 @@ int stereo_declare_wayland_init(struct wl_display *display, struct wl_event_queu
 /* 1 once the compositor's kde_stereo_content_manager_v1 is bound, else 0.
  * Since 1.4.0 the library binds version 2 of the protocol when the
  * compositor offers it: a declared surface without a viewport destination is
- * then one view wide, half its buffer's width. */
+ * then one view wide, half its buffer's width. Since 1.5.0 it binds version 3
+ * when offered, for the desktop depth calls below. */
 unsigned stereo_supported_wayland(void);
 /* For a surface that already has a wp_content_type_v1 of the caller's:
  * hand it over before the surface's first declaration, so the library sets
@@ -124,6 +125,58 @@ int stereo_declare_wayland_format(struct wl_surface *surface, enum stereo_layout
 int stereo_remove_wayland(struct wl_surface *surface);
 /* Call before disconnecting the display. Destroys all library-owned proxies. */
 void stereo_declare_wayland_finish(void);
+
+/* Desktop depth (since 1.5.0, kde_stereo_content_manager_v1 version 3).
+ * The compositor shows the desktop's own surfaces at depth levels: the
+ * active window at the screen, the windows lying behind it sunk, menus and
+ * popups popped. A toolkit may show depth inside a surface too, by drawing
+ * its elements once per eye at their own depths and handing the two views
+ * over full side by side. The compositor tells it whether the surface may
+ * show depth inside it now: the surface is on a stereo output and awake (the
+ * active window on top of what it overlaps, a popup, a panel, a desktop
+ * widget), not one of the windows lying flat behind the active one. It also
+ * says which of the surface's edges lie on its output's edge, where nothing
+ * comes nearer than the screen. The depth limits are the user's settings,
+ * which the toolkit reads itself. */
+enum stereo_depth_edge {
+    STEREO_DEPTH_EDGE_LEFT = 1,
+    STEREO_DEPTH_EDGE_TOP = 2,
+    STEREO_DEPTH_EDGE_RIGHT = 4,
+    STEREO_DEPTH_EDGE_BOTTOM = 8
+};
+
+struct stereo_depth_state {
+    unsigned awake;        /* nonzero while the surface's elements may be shown in depth */
+    unsigned output_edges; /* the surface's edges on its output's edge, stereo_depth_edge flags */
+};
+
+typedef void (*stereo_depth_listener)(void *data, struct wl_surface *surface, const struct stereo_depth_state *state);
+
+/* 1 once the compositor's kde_stereo_content_manager_v1 is bound at version
+ * 3 or later, which follows surfaces' desktop depth, else 0. */
+unsigned stereo_depth_supported_wayland(void);
+/* Follow the surface's desktop depth: the listener is called once the
+ * compositor has sent its state, and on every change, while the display's
+ * queue is dispatched. Watching again replaces the listener and its data.
+ * Returns -ENOTSUP when the compositor does not follow desktop depth; the
+ * surface is then never awake. */
+int stereo_depth_wayland_watch(struct wl_surface *surface, stereo_depth_listener listener, void *data);
+/* Stop following it, before the surface is destroyed. What
+ * stereo_depth_wayland_set_desktop_depth and stereo_depth_wayland_set_place
+ * set for the surface is withdrawn with it. Returns -EINVAL for a surface the
+ * library does not follow. */
+int stereo_depth_wayland_unwatch(struct wl_surface *surface);
+/* Mark the full side by side pair the surface shows as the desktop's own
+ * elements drawn once per eye, not stereo content (nonzero), or withdraw the
+ * mark (zero). Effective with the surface's next commit. */
+int stereo_depth_wayland_set_desktop_depth(struct wl_surface *surface, int desktop_depth);
+/* Declare where a popup surface (a menu, tooltip, popup or dialog) sits, as a
+ * fraction of the user's limits from -1 (the sunk limit) to 1 (the popped
+ * limit); values beyond are limited to that range. The compositor places it
+ * there under its own rules. Effective with the surface's next commit. */
+int stereo_depth_wayland_set_place(struct wl_surface *surface, double depth);
+/* Withdraw the declared place. Effective with the surface's next commit. */
+int stereo_depth_wayland_unset_place(struct wl_surface *surface);
 
 #ifdef __cplusplus
 }

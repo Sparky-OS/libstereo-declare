@@ -32,6 +32,10 @@ static struct {
     int type_creates, type_destroys, set_types;
     unsigned last_type;
     uint32_t manager_version;
+    int depth_creates, depth_destroys, set_desktop_depths, set_places, unset_places;
+    unsigned last_desktop_depth;
+    double last_place;
+    struct wl_resource *last_depth;
 } seen;
 
 struct surface_state {
@@ -121,7 +125,73 @@ static void manager_create(struct wl_client *c, struct wl_resource *resource, ui
     seen.stereo_creates++;
 }
 
-static const struct kde_stereo_content_manager_v1_interface manager_impl = {manager_destroy, manager_create};
+/* kde_stereo_depth_v1 */
+static void depth_destroy(struct wl_client *c, struct wl_resource *resource)
+{
+    (void)c;
+    wl_resource_destroy(resource);
+}
+
+static void depth_set_desktop_depth(struct wl_client *c, struct wl_resource *resource, uint32_t desktop_depth)
+{
+    (void)c;
+    (void)resource;
+    seen.set_desktop_depths++;
+    seen.last_desktop_depth = desktop_depth;
+}
+
+static void depth_set_place(struct wl_client *c, struct wl_resource *resource, wl_fixed_t depth)
+{
+    (void)c;
+    (void)resource;
+    seen.set_places++;
+    seen.last_place = wl_fixed_to_double(depth);
+}
+
+static void depth_unset_place(struct wl_client *c, struct wl_resource *resource)
+{
+    (void)c;
+    (void)resource;
+    seen.unset_places++;
+}
+
+static const struct kde_stereo_depth_v1_interface depth_impl = {depth_destroy, depth_set_desktop_depth, depth_set_place, depth_unset_place};
+
+static void depth_resource_destroy(struct wl_resource *resource)
+{
+    seen.depth_destroys++;
+    if (seen.last_depth == resource) {
+        seen.last_depth = NULL;
+    }
+}
+
+static void manager_get_depth(struct wl_client *c, struct wl_resource *resource, uint32_t id, struct wl_resource *surface)
+{
+    (void)surface;
+    struct wl_resource *depth = wl_resource_create(c, &kde_stereo_depth_v1_interface, wl_resource_get_version(resource), id);
+    wl_resource_set_implementation(depth, &depth_impl, NULL, depth_resource_destroy);
+    seen.depth_creates++;
+    seen.last_depth = depth;
+}
+
+static const struct kde_stereo_content_manager_v1_interface manager_impl = {manager_destroy, manager_create, manager_get_depth};
+
+/* What the library's depth listener heard. */
+static struct {
+    int calls;
+    void *data;
+    struct wl_surface *surface;
+    unsigned awake, output_edges;
+} heard;
+
+static void depth_listener(void *data, struct wl_surface *surface, const struct stereo_depth_state *state)
+{
+    heard.calls++;
+    heard.data = data;
+    heard.surface = surface;
+    heard.awake = state->awake;
+    heard.output_edges = state->output_edges;
+}
 
 static void bind_manager(struct wl_client *c, void *data, uint32_t version, uint32_t id)
 {
@@ -229,7 +299,7 @@ static void pump(void)
 int main(void)
 {
     CHECK(stereo_declare_version() == STEREO_DECLARE_VERSION);
-    CHECK(STEREO_DECLARE_VERSION == STEREO_DECLARE_VERSION_ENCODE(1, 4, 0));
+    CHECK(STEREO_DECLARE_VERSION == STEREO_DECLARE_VERSION_ENCODE(1, 5, 0));
 
     int fds[2];
     if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds) != 0) {
@@ -238,7 +308,7 @@ int main(void)
     server = wl_display_create();
     loop = wl_display_get_event_loop(server);
     wl_global_create(server, &wl_compositor_interface, 4, NULL, bind_compositor);
-    struct wl_global *stereo_global = wl_global_create(server, &kde_stereo_content_manager_v1_interface, 2, NULL, bind_manager);
+    struct wl_global *stereo_global = wl_global_create(server, &kde_stereo_content_manager_v1_interface, 3, NULL, bind_manager);
     struct wl_global *type_global = wl_global_create(server, &wp_content_type_manager_v1_interface, 1, NULL, bind_type_manager);
     wl_client_create(server, fds[0]);
     client = wl_display_connect_to_fd(fds[1]);
@@ -253,9 +323,72 @@ int main(void)
     CHECK(stereo_declare_wayland_init(client, NULL) == -EBUSY);
     pump();
     CHECK(stereo_supported_wayland() == 1);
-    /* Version 2: a declared surface without a viewport destination is one view wide. */
-    CHECK(seen.manager_version == 2);
+    /* Version 3: the desktop's depth of surfaces, beside version 2's one view wide surfaces. */
+    CHECK(seen.manager_version == 3);
+    CHECK(stereo_depth_supported_wayland() == 1);
     CHECK(compositor && type_manager);
+
+    /* Following a surface's desktop depth: one kde_stereo_depth_v1, and the compositor's states
+     * reach the listener with the surface and the caller's data. */
+    {
+        int token;
+        struct wl_surface *followed = wl_compositor_create_surface(compositor);
+        CHECK(stereo_depth_wayland_watch(NULL, depth_listener, &token) == -EINVAL);
+        CHECK(stereo_depth_wayland_watch(followed, NULL, &token) == -EINVAL);
+        CHECK(stereo_depth_wayland_watch(followed, depth_listener, &token) == 0);
+        pump();
+        CHECK(seen.depth_creates == 1 && seen.last_depth);
+        CHECK(heard.calls == 0);
+        kde_stereo_depth_v1_send_depth_state(seen.last_depth, 1, STEREO_DEPTH_EDGE_LEFT | STEREO_DEPTH_EDGE_TOP);
+        pump();
+        CHECK(heard.calls == 1 && heard.data == &token && heard.surface == followed);
+        CHECK(heard.awake == 1 && heard.output_edges == (STEREO_DEPTH_EDGE_LEFT | STEREO_DEPTH_EDGE_TOP));
+        kde_stereo_depth_v1_send_depth_state(seen.last_depth, 0, 0);
+        pump();
+        CHECK(heard.calls == 2 && heard.awake == 0 && heard.output_edges == 0);
+
+        /* Watching again replaces the listener and its data, on the same object. */
+        int other;
+        CHECK(stereo_depth_wayland_watch(followed, depth_listener, &other) == 0);
+        kde_stereo_depth_v1_send_depth_state(seen.last_depth, 1, STEREO_DEPTH_EDGE_RIGHT);
+        pump();
+        CHECK(seen.depth_creates == 1 && heard.calls == 3 && heard.data == &other && heard.output_edges == STEREO_DEPTH_EDGE_RIGHT);
+
+        /* The pair as the desktop's own depth, and a popup's place limited to [-1, 1]. */
+        CHECK(stereo_depth_wayland_set_desktop_depth(followed, 1) == 0);
+        CHECK(stereo_depth_wayland_set_place(followed, 0.5) == 0);
+        pump();
+        CHECK(seen.set_desktop_depths == 1 && seen.last_desktop_depth == 1);
+        CHECK(seen.set_places == 1 && seen.last_place == 0.5);
+        CHECK(stereo_depth_wayland_set_place(followed, 3.0) == 0);
+        CHECK(stereo_depth_wayland_unset_place(followed) == 0);
+        CHECK(stereo_depth_wayland_set_desktop_depth(followed, 0) == 0);
+        pump();
+        CHECK(seen.set_places == 2 && seen.last_place == 1.0 && seen.unset_places == 1);
+        CHECK(seen.set_desktop_depths == 2 && seen.last_desktop_depth == 0);
+        CHECK(stereo_depth_wayland_set_desktop_depth(NULL, 1) == -EINVAL);
+        CHECK(stereo_depth_wayland_set_place(NULL, 0.0) == -EINVAL);
+        CHECK(stereo_depth_wayland_unset_place(NULL) == -EINVAL);
+
+        /* A mark on a surface that nobody watches makes its object too. */
+        struct wl_surface *marked = wl_compositor_create_surface(compositor);
+        CHECK(stereo_depth_wayland_set_desktop_depth(marked, 1) == 0);
+        pump();
+        CHECK(seen.depth_creates == 2 && seen.set_desktop_depths == 3);
+
+        /* Unwatching destroys the object; a surface not followed is an error. */
+        CHECK(stereo_depth_wayland_unwatch(followed) == 0);
+        pump();
+        CHECK(seen.depth_destroys == 1);
+        CHECK(stereo_depth_wayland_unwatch(followed) == -EINVAL);
+        CHECK(stereo_depth_wayland_unwatch(NULL) == -EINVAL);
+        CHECK(stereo_depth_wayland_unwatch(marked) == 0);
+        pump();
+        CHECK(seen.depth_destroys == 2);
+        CHECK(wl_display_get_error(client) == 0);
+        wl_surface_destroy(followed);
+        wl_surface_destroy(marked);
+    }
 
     /* One declaration per surface, the kind through wp_content_type_v1. */
     struct wl_surface *surface = wl_compositor_create_surface(compositor);
@@ -349,7 +482,23 @@ int main(void)
     CHECK(seen.stereo_creates - seen.stereo_destroys == stereo_alive - 1);
     CHECK(seen.type_creates - seen.type_destroys == types_alive - 1);
     CHECK(stereo_supported_wayland() == 0);
+    CHECK(stereo_depth_supported_wayland() == 0);
     CHECK(stereo_declare_wayland(surface, STEREO_SBS_FULL, STEREO_CLASS_GAME, 0) == -ENOTSUP);
+
+    /* finish destroys what follows a surface's depth too. */
+    {
+        CHECK(stereo_declare_wayland_init(client, NULL) == 0);
+        pump();
+        struct wl_surface *followed = wl_compositor_create_surface(compositor);
+        CHECK(stereo_depth_wayland_watch(followed, depth_listener, NULL) == 0);
+        pump();
+        const int alive = seen.depth_creates - seen.depth_destroys;
+        stereo_declare_wayland_finish();
+        pump();
+        CHECK(seen.depth_creates - seen.depth_destroys == alive - 1);
+        CHECK(stereo_depth_wayland_watch(followed, depth_listener, NULL) == -ENOTSUP);
+        wl_surface_destroy(followed);
+    }
 
     /* The content type manager announced after the stereo one is still used,
      * and a compositor that offers version 1 only is bound at version 1. */
@@ -360,6 +509,15 @@ int main(void)
     CHECK(stereo_declare_wayland_init(client, NULL) == 0);
     pump();
     CHECK(stereo_supported_wayland() == 1 && seen.manager_version == 1);
+    /* Without version 3 there is no depth to follow. */
+    CHECK(stereo_depth_supported_wayland() == 0);
+    {
+        struct wl_surface *followed = wl_compositor_create_surface(compositor);
+        CHECK(stereo_depth_wayland_watch(followed, depth_listener, NULL) == -ENOTSUP);
+        CHECK(stereo_depth_wayland_set_desktop_depth(followed, 1) == -ENOTSUP);
+        CHECK(stereo_depth_wayland_set_place(followed, 0.5) == -ENOTSUP);
+        wl_surface_destroy(followed);
+    }
     struct wl_surface *late = wl_compositor_create_surface(compositor);
     const int late_stereo = seen.stereo_creates, late_types = seen.type_creates;
     CHECK(stereo_declare_wayland(late, STEREO_SBS_FULL, STEREO_CLASS_VIDEO, 0) == 0);

@@ -1,4 +1,4 @@
-# stereo-declare API, version 1.4
+# stereo-declare API, version 1.5
 
 **For programmers:** how a program declares a 3D window or surface once, on X11 and on Wayland.
 
@@ -41,6 +41,26 @@ Every call returns 0 or a negative `errno` value (`-EINVAL` for a bad argument, 
 | `stereo_declare_wayland_format(surface, layout)` | 1.1.0 | Declare the format only; the surface's content type stays the program's |
 | `stereo_remove_wayland(surface)` | 1.0.0 | Remove the declaration, before the surface is destroyed |
 | `stereo_declare_wayland_finish()` | 1.0.0 | Destroy everything the library made, before disconnecting |
+| `stereo_depth_supported_wayland()` | 1.5.0 | 1 once the compositor follows surfaces' desktop depth (protocol version 3), else 0 |
+| `stereo_depth_wayland_watch(surface, listener, data)` | 1.5.0 | Follow the surface's desktop depth: the listener hears whether it is awake and which edges lie on the output's edge |
+| `stereo_depth_wayland_unwatch(surface)` | 1.5.0 | Stop following it, before the surface is destroyed; withdraws its mark and place |
+| `stereo_depth_wayland_set_desktop_depth(surface, mark)` | 1.5.0 | Mark the surface's pair as the desktop's own elements drawn once per eye, not stereo content |
+| `stereo_depth_wayland_set_place(surface, depth)` | 1.5.0 | Declare where a popup surface sits, from -1 (sunk limit) to 1 (popped limit) |
+| `stereo_depth_wayland_unset_place(surface)` | 1.5.0 | Withdraw the place |
+
+## Desktop depth
+
+Since 1.5.0, with version 3 of `kde_stereo_content_manager_v1`. Stereo KWin shows the desktop's own surfaces at depth levels: the active window at the screen, the windows lying behind it sunk, menus and popups popped.
+A toolkit or a style may show depth inside a surface as well, by drawing its elements once per eye at their own depths and handing the two views over full side by side, declared as above.
+For that it follows the surface:
+
+- the listener hears `awake`, nonzero while the surface may show depth inside it: it is on a stereo output and awake (the active window on top of what it overlaps, a popup, a panel, a desktop widget), not one of the windows lying flat behind the active one. While it is not, the surface is drawn as for a 2D output;
+- and `output_edges`, the surface's edges on its output's edge (`STEREO_DEPTH_EDGE_LEFT` 1, `_TOP` 2, `_RIGHT` 4, `_BOTTOM` 8), where nothing comes nearer than the screen.
+
+The depth limits are the user's settings, which the toolkit reads itself.
+A pair drawn that way is the desktop's, not stereo content: `stereo_depth_wayland_set_desktop_depth(surface, 1)` says so, and the compositor still shows each view in its eye.
+A popup surface may declare its place with `stereo_depth_wayland_set_place()`; the compositor places it there under its own rules (at the output's edge it stays at the screen, and it is never behind the popup it was opened from).
+A surface may be followed by the library and, at the same time, by other parts of the program with their own objects.
 
 ## Values
 
