@@ -96,6 +96,30 @@ int stereo_declare_x11_one_view_size(Display *display, Window window, unsigned w
     return 0;
 }
 
+int stereo_declare_x11_child_place(Display *display, Window window,
+                                   const struct stereo_x11_child_place *place)
+{
+    if (!display || !window || (place && (place->x < -32767 || place->x > 32767
+            || place->y < -32767 || place->y > 32767 || !place->width || !place->height
+            || place->width > 32767 || place->height > 32767 || place->below_parent > 1))) {
+        return -EINVAL;
+    }
+    if (stereo_supported_x11(display) < 8) {
+        return -ENOTSUP;
+    }
+    const Atom atom = XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CHILD_PLACE", False);
+    if (place) {
+        const unsigned long values[5] = {(uint32_t)place->x, (uint32_t)place->y,
+                                        place->width, place->height, place->below_parent};
+        XChangeProperty(display, window, atom, XA_CARDINAL, 32, PropModeReplace,
+                        (const unsigned char *)values, 5);
+    } else {
+        XDeleteProperty(display, window, atom);
+    }
+    XFlush(display);
+    return 0;
+}
+
 int stereo_x11_one_view_event(Display *display, Window window, const XEvent *event,
                               struct stereo_x11_one_view_request *request)
 {
@@ -176,6 +200,7 @@ int stereo_remove_x11(Display *display, Window window)
     XDeleteProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT", False));
     XDeleteProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CLASS", False));
     XDeleteProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE", False));
+    XDeleteProperty(display, window, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CHILD_PLACE", False));
     XFlush(display);
     return 0;
 }

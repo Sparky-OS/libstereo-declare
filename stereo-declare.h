@@ -12,7 +12,7 @@ extern "C" {
  * meaning below; a minor version only adds. STEREO_DECLARE_VERSION is the
  * header's version, stereo_declare_version() the loaded library's. */
 #define STEREO_DECLARE_VERSION_MAJOR 1
-#define STEREO_DECLARE_VERSION_MINOR 6
+#define STEREO_DECLARE_VERSION_MINOR 7
 #define STEREO_DECLARE_VERSION_PATCH 0
 #define STEREO_DECLARE_VERSION_ENCODE(major, minor, patch) (((major) << 16) | ((minor) << 8) | (patch))
 #define STEREO_DECLARE_VERSION \
@@ -90,6 +90,18 @@ int stereo_declare_x11_format(Display *display, Window window, enum stereo_layou
  * support version 6. Width and height 0 remove it; each is at most 32767.
  * Since 1.4.0. */
 int stereo_declare_x11_one_view_size(Display *display, Window window, unsigned width, unsigned height);
+/* Independent placement of an already listed native child. Coordinates are relative
+ * to the top-level client, in display pixels; see CHILD-PLACE.md. Since 1.7.0. */
+struct stereo_x11_child_place {
+    int x;
+    int y;
+    unsigned width;
+    unsigned height;
+    unsigned below_parent;
+};
+/* Needs support version 8. A null place removes the property. */
+int stereo_declare_x11_child_place(Display *display, Window window,
+                                   const struct stereo_x11_child_place *place);
 /* A version-7 proposal for the window's place, in the same display pixels
  * as one_view_size. The serial identifies this proposal, never zero. */
 struct stereo_x11_one_view_request {
