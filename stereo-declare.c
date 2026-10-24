@@ -192,6 +192,21 @@ int stereo_declare_x11_one_view_commit(Display *display, Window window,
     return 0;
 }
 
+int stereo_declare_x11_child(Display *display, Window parent, Window child, enum stereo_layout layout,
+                             enum stereo_class content_class, unsigned subclass,
+                             unsigned view_width, unsigned view_height)
+{
+    (void)display; (void)parent; (void)child; (void)layout; (void)content_class; (void)subclass;
+    (void)view_width; (void)view_height;
+    return -ENOSYS;
+}
+
+int stereo_remove_x11_child(Display *display, Window parent, Window child)
+{
+    (void)display; (void)parent; (void)child;
+    return -ENOSYS;
+}
+
 int stereo_remove_x11(Display *display, Window window)
 {
     if (!display || !window) {

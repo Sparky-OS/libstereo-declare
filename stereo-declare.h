@@ -123,6 +123,27 @@ int stereo_x11_one_view_event(Display *display, Window window, const XEvent *eve
 int stereo_declare_x11_one_view_commit(Display *display, Window window,
                                       const struct stereo_x11_one_view_request *request,
                                       unsigned width, unsigned height);
+/* A child window of an X11 window that holds the stereo content, such as the
+ * OpenGL area of a program whose interface is drawn in 2D around it: the
+ * child is declared with its own format and class, and listed in the
+ * parent's _KDE_NET_WM_STEREO_CONTENT_CHILDREN, which makes the compositor
+ * show the child's two views one for each eye and the rest of the window the
+ * same in both eyes. The child must be inside the parent window. Needs
+ * support version 5.
+ * A child that holds its two views at full width, an X11 window twice as
+ * wide as the place it is shown at, gives the size one view is shown at in
+ * view_width and view_height: the library writes the child's
+ * _KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE (support version 8; -ENOTSUP when
+ * the compositor is older, and nothing is written then). Zero and zero means
+ * the child holds its views at its own size, and removes an earlier size.
+ * A new call replaces the child's values and lists it once. Since 1.7.0. */
+int stereo_declare_x11_child(Display *display, Window parent, Window child, enum stereo_layout layout,
+                             enum stereo_class content_class, unsigned subclass,
+                             unsigned view_width, unsigned view_height);
+/* Take the child out of the parent's list and delete its declaration (the
+ * format, the class and the size one view is shown at), which gives it back to
+ * the parent window. Since 1.7.0. */
+int stereo_remove_x11_child(Display *display, Window parent, Window child);
 /* Delete the declaration's properties: the layout, the class and the size
  * one view is shown at. */
 int stereo_remove_x11(Display *display, Window window);
