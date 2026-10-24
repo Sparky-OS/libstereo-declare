@@ -291,3 +291,9 @@ Its explicit base size is subtracted for aspect calculations; the minimum is not
 [EWMH 6.2](https://specifications.freedesktop.org/wm/latest/ar01s06.html) synchronizes repaint using “message/ConfigureNotify pairs”.
 It describes completion of actual configure work, not a second independently sized destination.
 These existing mechanisms keep their meanings; root support version 7 announces the additional exchange.
+
+## Child buffer placement (support version 8)
+
+`stereo_declare_x11_child_place` sets the independent destination and stacking of an existing listed native child.
+See [CHILD-PLACE.md](CHILD-PLACE.md) for the property, ranges, input and fallback contract.
+A null placement removes the property.
