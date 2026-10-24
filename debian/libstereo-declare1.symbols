@@ -22,4 +22,5 @@ libstereo-declare.so.1 libstereo-declare1 #MINVER#
  stereo_x11_one_view_event@Base 1.6.0
  stereo_declare_x11_one_view_commit@Base 1.6.0
  stereo_declare_x11_child@Base 1.7.0
+ stereo_declare_x11_child_place@Base 1.7.0
  stereo_remove_x11_child@Base 1.7.0

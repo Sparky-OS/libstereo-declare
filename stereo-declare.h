@@ -90,8 +90,12 @@ int stereo_declare_x11_format(Display *display, Window window, enum stereo_layou
  * support version 6. Width and height 0 remove it; each is at most 32767.
  * Since 1.4.0. */
 int stereo_declare_x11_one_view_size(Display *display, Window window, unsigned width, unsigned height);
-/* Independent placement of an already listed native child. Coordinates are relative
- * to the top-level client, in display pixels; see CHILD-PLACE.md. Since 1.7.0. */
+/* Independent placement of an already listed native child (one declared with
+ * stereo_declare_x11_child() or listed by the program): the rectangle it is shown
+ * at, and whether below the parent's own surface, so that the ordinary window paints
+ * its controls above the video. It wins over the size one view is shown at. Coordinates
+ * are relative to the top-level client, in display pixels; see CHILD-PLACE.md.
+ * Since 1.7.0. */
 struct stereo_x11_child_place {
     int x;
     int y;
@@ -141,7 +145,7 @@ int stereo_declare_x11_child(Display *display, Window parent, Window child, enum
                              enum stereo_class content_class, unsigned subclass,
                              unsigned view_width, unsigned view_height);
 /* Take the child out of the parent's list and delete its declaration (the
- * format, the class and the size one view is shown at), which gives it back to
+ * format, the class, the size one view is shown at and its declared place), which gives it back to
  * the parent window. Since 1.7.0. */
 int stereo_remove_x11_child(Display *display, Window parent, Window child);
 /* Delete the declaration's properties: the layout, the class and the size

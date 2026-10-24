@@ -112,6 +112,13 @@ int main(void)
     CHECK(stereo_declare_x11_child(display, parent, child, (enum stereo_layout)1, STEREO_CLASS_GAME, 0, 0, 0) == -EINVAL);
     CHECK(stereo_remove_x11_child(display, parent, 0) == -EINVAL);
 
+    /* A declared place (stereo_declare_x11_child_place) is the child's too, and removal takes it away. */
+    {
+        struct stereo_x11_child_place place = {4, 7, 50, 40, 1};
+        CHECK(stereo_declare_x11_child_place(display, child, &place) == 0);
+        XSync(display, False);
+        CHECK(property(display, child, "_KDE_NET_WM_STEREO_CONTENT_CHILD_PLACE", cardinal, values) == 5 && values[4] == 1);
+    }
     /* Removal: the child leaves the list and loses its declaration; the other child stays. */
     CHECK(stereo_remove_x11_child(display, parent, child) == 0);
     XSync(display, False);
@@ -119,6 +126,7 @@ int main(void)
     CHECK(property(display, child, "_KDE_NET_WM_STEREO_CONTENT", cardinal, values) == -1);
     CHECK(property(display, child, "_KDE_NET_WM_STEREO_CONTENT_CLASS", cardinal, values) == -1);
     CHECK(property(display, child, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE", cardinal, values) == -1);
+    CHECK(property(display, child, "_KDE_NET_WM_STEREO_CONTENT_CHILD_PLACE", cardinal, values) == -1);
     /* The last child out deletes the list; removing a child that is not listed is no error. */
     CHECK(stereo_remove_x11_child(display, parent, second) == 0);
     CHECK(stereo_remove_x11_child(display, parent, second) == 0);

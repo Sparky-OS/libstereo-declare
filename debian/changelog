@@ -8,6 +8,11 @@ stereo-declare (1.7.0-1) unstable; urgency=medium
     (support version 8), so the compositor shows each view at the full width
     of the child instead of stretching halves. stereo_remove_x11_child()
     gives the child back to the parent window.
+  * New: stereo_declare_x11_child_place() sets the independent rectangle and
+    the stacking below the parent's own surface of a listed child
+    (_KDE_NET_WM_STEREO_CONTENT_CHILD_PLACE, CHILD-PLACE.md), for a video
+    that keeps its native raster under controls the ordinary window paints.
+    Both are version 8 of the declaration.
 
  -- Daniel Ramos (Capitain Jack) <Capitain_Jack@yahoo.com>  Sat, 24 Oct 2026 12:00:00 -0300
 

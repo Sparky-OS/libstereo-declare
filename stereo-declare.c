@@ -263,6 +263,7 @@ int stereo_remove_x11_child(Display *display, Window parent, Window child)
     XDeleteProperty(display, child, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT", False));
     XDeleteProperty(display, child, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CLASS", False));
     XDeleteProperty(display, child, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE", False));
+    XDeleteProperty(display, child, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CHILD_PLACE", False));
     const Atom list_atom = XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CHILDREN", False);
     unsigned long *listed;
     unsigned long count;

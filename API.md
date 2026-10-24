@@ -34,6 +34,7 @@ Every call returns 0 or a negative `errno` value (`-EINVAL` for a bad argument, 
 | `stereo_declare_x11_format(display, window, layout)` | 1.1.0 | Declare the format only; the class property stays the program's |
 | `stereo_declare_x11_one_view_size(display, window, width, height)` | 1.4.0 | Declare the size one view is shown at, for views of another resolution; 0, 0 removes it |
 | `stereo_declare_x11_child(display, parent, child, layout, class, subclass, view_width, view_height)` | 1.7.0 | Declare a child window of an X11 window that holds the stereo content, list it in the parent, and give the size one view is shown at when the child holds both views at full width |
+| `stereo_declare_x11_child_place(display, child, place)` | 1.7.0 | The rectangle a listed child is shown at and whether below its parent's surface (support version 8); a null place removes it |
 | `stereo_remove_x11_child(display, parent, child)` | 1.7.0 | Take the child out of the parent's list and delete its declaration |
 | `stereo_remove_x11(display, window)` | 1.0.0 | Remove the declaration (all its properties) |
 | `stereo_declare_wayland_init(display, queue)` | 1.0.0 | Start, once per thread, on the display's dispatch thread |
@@ -179,6 +180,7 @@ stereo_declare_x11_child(display, top_level, area, STEREO_SBS_FULL, STEREO_CLASS
 The call writes the child's `_KDE_NET_WM_STEREO_CONTENT` and `_CLASS`, its `_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE`, and appends the child to the parent's `_KDE_NET_WM_STEREO_CONTENT_CHILDREN` once.
 With 0, 0 for the size the child holds its views at its own size, which is also its place on screen.
 Support version 8 is needed for a size; an older desktop gets `-ENOTSUP` and nothing is written, so the program falls back to a child that holds the two views at its place.
+**Which call for which case:** a child that holds both views at full width, twice as wide as its place, uses `stereo_declare_x11_child()` with the size of one view. A video that keeps its native raster under controls and subtitles the ordinary window paints at display resolution uses `stereo_declare_x11_child()` and then `stereo_declare_x11_child_place()` with `below_parent` set (see [CHILD-PLACE.md](CHILD-PLACE.md)). The declared place wins over the size of one view when a child has both.
 `stereo_remove_x11_child()` gives the child back to the parent window.
 The child must be inside the parent; the compositor drops one that is not.
 
