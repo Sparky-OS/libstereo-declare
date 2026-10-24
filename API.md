@@ -33,6 +33,8 @@ Every call returns 0 or a negative `errno` value (`-EINVAL` for a bad argument, 
 | `stereo_declare_x11(display, window, layout, class, subclass)` | 1.0.0 | Declare an X11 window; a new call replaces the values |
 | `stereo_declare_x11_format(display, window, layout)` | 1.1.0 | Declare the format only; the class property stays the program's |
 | `stereo_declare_x11_one_view_size(display, window, width, height)` | 1.4.0 | Declare the size one view is shown at, for views of another resolution; 0, 0 removes it |
+| `stereo_declare_x11_child(display, parent, child, layout, class, subclass, view_width, view_height)` | 1.7.0 | Declare a child window of an X11 window that holds the stereo content, list it in the parent, and give the size one view is shown at when the child holds both views at full width |
+| `stereo_remove_x11_child(display, parent, child)` | 1.7.0 | Take the child out of the parent's list and delete its declaration |
 | `stereo_remove_x11(display, window)` | 1.0.0 | Remove the declaration (all its properties) |
 | `stereo_declare_wayland_init(display, queue)` | 1.0.0 | Start, once per thread, on the display's dispatch thread |
 | `stereo_supported_wayland()` | 1.0.0 | 1 once the compositor's declaration global is bound, else 0 |
@@ -162,9 +164,23 @@ A new size changes the place only; declaring 0, 0 removes it, and the window is 
 
 Rules:
 - **The properties:** `_KDE_NET_WM_STEREO_CONTENT` is CARDINAL/32 with one value (0 or 3); `_KDE_NET_WM_STEREO_CONTENT_CLASS` is CARDINAL/32 with two values, class then sub-class; `_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE` is CARDINAL/32 with two values, the width and the height one view is shown at, in display pixels. They are written as separate requests and flushed, not as one transaction.
-- **The root window's `_KDE_NET_WM_STEREO_CONTENT_SUPPORTED`** gives the version the window manager understands: 1 the layout, 2 also the class and sub-class, 3 also sizing (the program's own sizes are one view's, and the window manager makes the X11 window hold both), 6 also the size one view is shown at (4 and 5 are for Mesa's packed buffers and child windows, which this library does not write). `stereo_declare_x11()` declares from version 2 on, `stereo_declare_x11_format()` from version 1, `stereo_declare_x11_one_view_size()` from version 6.
+- **The root window's `_KDE_NET_WM_STEREO_CONTENT_SUPPORTED`** gives the version the window manager understands: 1 the layout, 2 also the class and sub-class, 3 also sizing (the program's own sizes are one view's, and the window manager makes the X11 window hold both), 6 also the size one view is shown at (4 is for Mesa's packed buffers, which this library does not write; 5 also shows the child windows a window lists; 7 negotiates the place; 8 also takes the size one view is shown at from a child). `stereo_declare_x11()` declares from version 2 on, `stereo_declare_x11_format()` from version 1, `stereo_declare_x11_one_view_size()` from version 6.
 - **Xlib errors** go to the program's own error handler; a flushed request is not proof that the server accepted it.
 - **Under Xwayland** a declared child window becomes a surface of its own in Sparky Stereo OS's Xwayland, so the 3D area of an X11 program works the same way as on Wayland.
+
+**A child window that holds the stereo content** (1.7.0, support versions 5 and 8). A program whose interface is drawn in 2D around an OpenGL area declares that area, not its top-level window.
+When the area holds its two views at full width, its X11 window is twice as wide as the place it is shown at, and the program gives the size of one view:
+
+```c
+Window area = XCreateSimpleWindow(display, frame, 10, 5, 2 * 1544, 1080, 0, 0, 0); /* two views of 1544x1080 */
+stereo_declare_x11_child(display, top_level, area, STEREO_SBS_FULL, STEREO_CLASS_SCIENTIFIC, STEREO_SUBCLASS_UNSPECIFIED, 1544, 1080);
+```
+
+The call writes the child's `_KDE_NET_WM_STEREO_CONTENT` and `_CLASS`, its `_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE`, and appends the child to the parent's `_KDE_NET_WM_STEREO_CONTENT_CHILDREN` once.
+With 0, 0 for the size the child holds its views at its own size, which is also its place on screen.
+Support version 8 is needed for a size; an older desktop gets `-ENOTSUP` and nothing is written, so the program falls back to a child that holds the two views at its place.
+`stereo_remove_x11_child()` gives the child back to the parent window.
+The child must be inside the parent; the compositor drops one that is not.
 
 ## Python
 
