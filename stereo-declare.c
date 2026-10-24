@@ -192,19 +192,96 @@ int stereo_declare_x11_one_view_commit(Display *display, Window window,
     return 0;
 }
 
+/* The windows listed in the parent's _KDE_NET_WM_STEREO_CONTENT_CHILDREN; false when it is
+ * absent or of another type. */
+static int children_list(Display *display, Window parent, Atom atom, unsigned long **windows, unsigned long *count)
+{
+    Atom type;
+    int format;
+    unsigned long remaining;
+    unsigned char *data = NULL;
+    *windows = NULL;
+    *count = 0;
+    if (XGetWindowProperty(display, parent, atom, 0, 1024, False, XA_WINDOW, &type, &format, count, &remaining, &data) != Success
+        || type != XA_WINDOW || format != 32) {
+        XFree(data);
+        *count = 0;
+        return 0;
+    }
+    *windows = (unsigned long *)data;
+    return 1;
+}
+
 int stereo_declare_x11_child(Display *display, Window parent, Window child, enum stereo_layout layout,
                              enum stereo_class content_class, unsigned subclass,
                              unsigned view_width, unsigned view_height)
 {
-    (void)display; (void)parent; (void)child; (void)layout; (void)content_class; (void)subclass;
-    (void)view_width; (void)view_height;
-    return -ENOSYS;
+    if (!display || !parent || !child || child == parent || !valid(layout, content_class, subclass)
+        || (!view_width) != (!view_height) || view_width > 32767 || view_height > 32767) {
+        return -EINVAL;
+    }
+    const unsigned supported = stereo_supported_x11(display);
+    if (supported < 5 || (view_width && supported < 8)) {
+        return -ENOTSUP;
+    }
+    const unsigned long packing = layout;
+    const unsigned long kind[2] = {content_class, subclass};
+    XChangeProperty(display, child, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CLASS", False),
+                    XA_CARDINAL, 32, PropModeReplace, (const unsigned char *)kind, 2);
+    XChangeProperty(display, child, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT", False),
+                    XA_CARDINAL, 32, PropModeReplace, (const unsigned char *)&packing, 1);
+    const Atom size_atom = XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE", False);
+    if (view_width) {
+        const unsigned long size[2] = {view_width, view_height};
+        XChangeProperty(display, child, size_atom, XA_CARDINAL, 32, PropModeReplace, (const unsigned char *)size, 2);
+    } else {
+        XDeleteProperty(display, child, size_atom);
+    }
+    /* The child is listed once, after its own declaration is in place; an append keeps the others. */
+    const Atom list_atom = XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CHILDREN", False);
+    unsigned long *listed;
+    unsigned long count;
+    int found = 0;
+    children_list(display, parent, list_atom, &listed, &count);
+    for (unsigned long i = 0; i < count; i++) {
+        found |= listed[i] == child;
+    }
+    XFree(listed);
+    if (!found) {
+        const unsigned long window = child;
+        XChangeProperty(display, parent, list_atom, XA_WINDOW, 32, PropModeAppend, (const unsigned char *)&window, 1);
+    }
+    XFlush(display);
+    return 0;
 }
 
 int stereo_remove_x11_child(Display *display, Window parent, Window child)
 {
-    (void)display; (void)parent; (void)child;
-    return -ENOSYS;
+    if (!display || !parent || !child) {
+        return -EINVAL;
+    }
+    XDeleteProperty(display, child, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT", False));
+    XDeleteProperty(display, child, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CLASS", False));
+    XDeleteProperty(display, child, XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_ONE_VIEW_SIZE", False));
+    const Atom list_atom = XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CHILDREN", False);
+    unsigned long *listed;
+    unsigned long count;
+    if (children_list(display, parent, list_atom, &listed, &count)) {
+        unsigned long kept = 0;
+        for (unsigned long i = 0; i < count; i++) {
+            if (listed[i] != child) {
+                listed[kept++] = listed[i];
+            }
+        }
+        if (kept == 0) {
+            XDeleteProperty(display, parent, list_atom);
+        } else if (kept != count) {
+            XChangeProperty(display, parent, list_atom, XA_WINDOW, 32, PropModeReplace, (const unsigned char *)listed, (int)kept);
+        }
+    }
+    XFree(listed);
+    XFlush(display);
+    return 0;
 }
 
 int stereo_remove_x11(Display *display, Window window)
