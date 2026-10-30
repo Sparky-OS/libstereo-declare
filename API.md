@@ -35,6 +35,7 @@ Every call returns 0 or a negative `errno` value (`-EINVAL` for a bad argument, 
 | `stereo_declare_x11_one_view_size(display, window, width, height)` | 1.4.0 | Declare the size one view is shown at, for views of another resolution; 0, 0 removes it |
 | `stereo_declare_x11_child(display, parent, child, layout, class, subclass, view_width, view_height)` | 1.7.0 | Declare a child window of an X11 window that holds the stereo content, list it in the parent, and give the size one view is shown at when the child holds both views at full width |
 | `stereo_declare_x11_child_place(display, child, place)` | 1.7.0 | The rectangle a listed child is shown at and whether below its parent's surface (support version 8); a null place removes it |
+| `stereo_move_x11_child(display, old_parent, new_parent, child)` | 1.8.0 | Move only list membership; `None` attaches or detaches; content and placement are untouched |
 | `stereo_remove_x11_child(display, parent, child)` | 1.7.0 | Take the child out of the parent's list and delete its declaration |
 | `stereo_remove_x11(display, window)` | 1.0.0 | Remove the declaration (all its properties) |
 | `stereo_declare_wayland_init(display, queue)` | 1.0.0 | Start, once per thread, on the display's dispatch thread |
@@ -315,3 +316,19 @@ These existing mechanisms keep their meanings; root support version 7 announces 
 `stereo_declare_x11_child_place` sets the independent destination and stacking of an existing listed native child.
 See [CHILD-PLACE.md](CHILD-PLACE.md) for the property, ranges, input and fallback contract.
 A null placement removes the property.
+
+### Membership follows the owner; content follows the native window
+
+`stereo_move_x11_child()` changes only `_KDE_NET_WM_STEREO_CONTENT_CHILDREN`.
+Use it when a live declared native child moves between ordinary top levels, or becomes temporarily detached.
+An old or new parent of `None` omits that end; equal parents ensure exactly one entry without redundant writes.
+Every other child and its order are preserved, including lists longer than 1024 entries.
+The function validates both lists before writing, excludes other clients during the transaction, and returns `-EPROTO` for malformed list properties without changing either list.
+Adding requires support version 5; detaching remains possible after compositor support disappears.
+Pass live parent windows, and initialise Xlib threading before sharing a display between threads.
+Like the other X11 calls, errors for invalid or destroyed X windows use the application's Xlib error handler.
+
+This call neither reparents the X window nor changes its content, class, one-view size or placement properties.
+Keep the content declaration for the native window's lifetime, even when a GLX or Vulkan handle is recreated.
+The caller still owns effective visibility, clipping, placement and input, and must detach membership before destroying an owner.
+At the actual content window's destruction, use `stereo_remove_x11_child()` for a listed child, or detach and remove its content separately.

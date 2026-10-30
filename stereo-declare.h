@@ -12,7 +12,7 @@ extern "C" {
  * meaning below; a minor version only adds. STEREO_DECLARE_VERSION is the
  * header's version, stereo_declare_version() the loaded library's. */
 #define STEREO_DECLARE_VERSION_MAJOR 1
-#define STEREO_DECLARE_VERSION_MINOR 7
+#define STEREO_DECLARE_VERSION_MINOR 8
 #define STEREO_DECLARE_VERSION_PATCH 0
 #define STEREO_DECLARE_VERSION_ENCODE(major, minor, patch) (((major) << 16) | ((minor) << 8) | (patch))
 #define STEREO_DECLARE_VERSION \
@@ -144,6 +144,16 @@ int stereo_declare_x11_one_view_commit(Display *display, Window window,
 int stereo_declare_x11_child(Display *display, Window parent, Window child, enum stereo_layout layout,
                              enum stereo_class content_class, unsigned subclass,
                              unsigned view_width, unsigned view_height);
+/* Move only the child's membership between ordinary owners, without reading or
+ * changing any property on the child. None attaches/detaches one end; equal
+ * parents ensure one membership. Unrelated children and their order stay intact.
+ * Adding needs support version 5; removal also works after support disappears.
+ * Parents must be live X windows. The caller owns actual parenting, clipping,
+ * content identity and destruction. Malformed lists return -EPROTO unchanged.
+ * The list transaction excludes other clients; use XInitThreads when sharing
+ * this Display across threads. Since 1.8.0. */
+int stereo_move_x11_child(Display *display, Window old_parent, Window new_parent, Window child);
+
 /* Take the child out of the parent's list and delete its declaration (the
  * format, the class, the size one view is shown at and its declared place), which gives it back to
  * the parent window. Since 1.7.0. */

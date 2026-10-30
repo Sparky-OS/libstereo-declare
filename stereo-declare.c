@@ -5,6 +5,7 @@
 
 #include <X11/Xatom.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -210,6 +211,102 @@ static int children_list(Display *display, Window parent, Atom atom, unsigned lo
     }
     *windows = (unsigned long *)data;
     return 1;
+}
+
+/* Read the complete list while the server is grabbed. A truncated list must
+ * never replace the unobserved tail of another child's membership. */
+static int membership_list(Display *display, Window parent, Atom atom,
+                           unsigned long **windows, unsigned long *count)
+{
+    Atom type;
+    int format;
+    unsigned long remaining;
+    unsigned char *data = NULL;
+    *windows = NULL;
+    *count = 0;
+    if (!parent) {
+        return 0;
+    }
+    int status = XGetWindowProperty(display, parent, atom, 0, 0, False, AnyPropertyType,
+                                    &type, &format, count, &remaining, &data);
+    XFree(data);
+    if (status != Success) {
+        return -EIO;
+    }
+    if (type == None) {
+        return 0;
+    }
+    if (type != XA_WINDOW || format != 32 || remaining % 4) {
+        return -EPROTO;
+    }
+    if (remaining / 4 >= INT_MAX) {
+        return -E2BIG;
+    }
+    status = XGetWindowProperty(display, parent, atom, 0, remaining / 4, False, XA_WINDOW,
+                                &type, &format, count, &remaining, &data);
+    if (status != Success || type != XA_WINDOW || format != 32 || remaining) {
+        XFree(data);
+        return -EIO;
+    }
+    *windows = (unsigned long *)data;
+    return 0;
+}
+
+static void update_membership(Display *display, Window parent, Atom atom,
+                              unsigned long *windows, unsigned long count, Window child, int add)
+{
+    unsigned long kept = 0;
+    int found = 0;
+    for (unsigned long i = 0; i < count; i++) {
+        if (windows[i] != child || (add && !found)) {
+            windows[kept++] = windows[i];
+        }
+        found |= windows[i] == child;
+    }
+    if (kept != count) {
+        if (kept) {
+            XChangeProperty(display, parent, atom, XA_WINDOW, 32, PropModeReplace,
+                            (const unsigned char *)windows, (int)kept);
+        } else {
+            XDeleteProperty(display, parent, atom);
+        }
+    }
+    if (add && !found) {
+        const unsigned long value = child;
+        XChangeProperty(display, parent, atom, XA_WINDOW, 32, PropModeAppend,
+                        (const unsigned char *)&value, 1);
+    }
+}
+
+int stereo_move_x11_child(Display *display, Window old_parent, Window new_parent, Window child)
+{
+    if (!display || !child || old_parent == child || new_parent == child) {
+        return -EINVAL;
+    }
+    XLockDisplay(display);
+    XGrabServer(display);
+    int result = 0;
+    unsigned long *old_list = NULL, *new_list = NULL;
+    unsigned long old_count = 0, new_count = 0;
+    const Atom atom = XInternAtom(display, "_KDE_NET_WM_STEREO_CONTENT_CHILDREN", False);
+    if (new_parent && stereo_supported_x11(display) < 5) {
+        result = -ENOTSUP;
+    } else if ((result = membership_list(display, old_parent, atom, &old_list, &old_count)) == 0
+               && (old_parent == new_parent
+                   || (result = membership_list(display, new_parent, atom, &new_list, &new_count)) == 0)) {
+        if (old_parent) {
+            update_membership(display, old_parent, atom, old_list, old_count, child, old_parent == new_parent);
+        }
+        if (new_parent && old_parent != new_parent) {
+            update_membership(display, new_parent, atom, new_list, new_count, child, 1);
+        }
+    }
+    XFree(old_list);
+    XFree(new_list);
+    XUngrabServer(display);
+    XFlush(display);
+    XUnlockDisplay(display);
+    return result;
 }
 
 int stereo_declare_x11_child(Display *display, Window parent, Window child, enum stereo_layout layout,

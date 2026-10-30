@@ -299,7 +299,7 @@ static void pump(void)
 int main(void)
 {
     CHECK(stereo_declare_version() == STEREO_DECLARE_VERSION);
-    CHECK(STEREO_DECLARE_VERSION == STEREO_DECLARE_VERSION_ENCODE(1, 7, 0));
+    CHECK(STEREO_DECLARE_VERSION == STEREO_DECLARE_VERSION_ENCODE(1, 8, 0));
 
     int fds[2];
     if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds) != 0) {
