@@ -46,7 +46,7 @@ foreach(protocol stereo content_type)
         DEPENDS ${${protocol}_xml} VERBATIM)
 endforeach()
 
-add_library(stereo-declare SHARED stereo-declare.c stereo-client.h stereo-protocol.c content_type-client.h content_type-protocol.c)
+add_library(stereo-declare SHARED stereo-declare.c stereo-presentation.c stereo-client.h stereo-protocol.c content_type-client.h content_type-protocol.c)
 target_compile_features(stereo-declare PRIVATE c_std_11)
 target_compile_options(stereo-declare PRIVATE -Wall -Wextra $<$<BOOL:${STEREO_DECLARE_WERROR}>:-Werror>)
 target_include_directories(stereo-declare PRIVATE ${CMAKE_CURRENT_BINARY_DIR}

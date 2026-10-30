@@ -154,7 +154,24 @@ The 1.9 implementation provides a caller-owned presentation context bound to a D
 It exposes discovery, ARM, terminal record parsing, CANCEL, ACK and close operations matching the state machine above.
 It returns unsupported on an old Xwayland before writing requests, busy for an occupied local slot, and protocol error for malformed receipt data.
 It does not reinterpret a successful X request send as server acceptance.
-Public C declarations and the minor-version bump land with the implementation and ABI tests, not with this documentation alone.
+The C API is available since 1.9.0:
+
+| Function | Result |
+|---|---|
+| `stereo_x11_presentation_supported(display, window, &clock_id)` | 1 supported, 0 absent, negative errno malformed/error |
+| `stereo_x11_presentation_create(display, window, session, &context)` | 0 created, `-ENOTSUP` absent, `-EBUSY` existing mailbox |
+| `stereo_x11_presentation_arm(context, request, serial)` | 0 armed/idempotent, `-EAGAIN` occupied, `-EINVAL` non-increasing identity |
+| `stereo_x11_presentation_read(context, event, &receipt)` | 1 matching terminal record, 0 none/unrelated, negative errno malformed/error |
+| `stereo_x11_presentation_cancel(context)` | 0 cancellation sent or already terminal |
+| `stereo_x11_presentation_ack(context)` | 0 terminal slot consumed locally, `-EINVAL` before reading its terminal result |
+| `stereo_x11_presentation_close(context)` | Deletes both local mailbox properties and frees the context |
+
+Pass a null event to poll. Otherwise pass the caller's PropertyNotify event without removing events from another owner's queue.
+Use exactly one serialized context per window; do not share it between threads.
+Close it before destroying its window or closing its Display.
+The caller owns X error handling and retires readiness on every disconnect, target, visibility or surface change.
+Deleting REQUEST invalidates the server binding immediately; deleting RECEIPT removes its old property bytes.
+The server also clears stale receipt bytes on a fresh ARM, and never lets a new session inherit them.
 Existing 1.8 callers, SONAME 1, Python declarations and all layout/place/membership APIs remain unchanged.
 
 GTK and Qt event-loop integrations must preserve this ownership and pass immutable acquisition data to their completion callbacks.

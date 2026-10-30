@@ -7,9 +7,8 @@
 #include <string.h>
 
 /* Resolve the additive API at runtime so the same test fails on 1.5.0. */
-struct place_request { unsigned serial, width, height; };
-typedef int (*event_fn)(Display *, Window, const XEvent *, struct place_request *);
-typedef int (*commit_fn)(Display *, Window, const struct place_request *, unsigned, unsigned);
+typedef int (*event_fn)(Display *, Window, const XEvent *, struct stereo_x11_one_view_request *);
+typedef int (*commit_fn)(Display *, Window, const struct stereo_x11_one_view_request *, unsigned, unsigned);
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
 int main(void)
 {
@@ -29,7 +28,7 @@ int main(void)
     XChangeProperty(d, root, support, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)&version, 1);
     XEvent e = {0};
     e.type = PropertyNotify; e.xproperty.window = w; e.xproperty.atom = request; e.xproperty.state = PropertyNewValue;
-    struct place_request r = {1, 700, 500};
+    struct stereo_x11_one_view_request r = {1, 700, 500};
     CHECK(read_event(d, w, &e, &r) == -ENOTSUP);
     CHECK(commit(d, w, &r, 700, 500) == -ENOTSUP);
     version = 7;

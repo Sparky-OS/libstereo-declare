@@ -1,13 +1,12 @@
 /* SPDX-License-Identifier: MIT */
-#include <X11/Xlib.h>
+#include <stereo-declare.h>
 #include <X11/Xatom.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 
-struct child_place { int x, y; unsigned width, height, below_parent; };
-typedef int (*place_fn)(Display *, Window, const struct child_place *);
+typedef int (*place_fn)(Display *, Window, const struct stereo_x11_child_place *);
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
 int main(void)
 {
@@ -23,7 +22,7 @@ int main(void)
     Atom atom = XInternAtom(d, "_KDE_NET_WM_STEREO_CONTENT_CHILD_PLACE", False);
     unsigned long version = 7;
     XChangeProperty(d, root, support, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)&version, 1);
-    struct child_place p = {-12, 23, 640, 360, 1};
+    struct stereo_x11_child_place p = {-12, 23, 640, 360, 1};
     CHECK(place(d, w, &p) == -ENOTSUP);
     version = 8;
     XChangeProperty(d, root, support, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)&version, 1);

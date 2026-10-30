@@ -3,6 +3,7 @@
 #define STEREO_DECLARE_H
 
 #include <X11/Xlib.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,7 +13,7 @@ extern "C" {
  * meaning below; a minor version only adds. STEREO_DECLARE_VERSION is the
  * header's version, stereo_declare_version() the loaded library's. */
 #define STEREO_DECLARE_VERSION_MAJOR 1
-#define STEREO_DECLARE_VERSION_MINOR 8
+#define STEREO_DECLARE_VERSION_MINOR 9
 #define STEREO_DECLARE_VERSION_PATCH 0
 #define STEREO_DECLARE_VERSION_ENCODE(major, minor, patch) (((major) << 16) | ((minor) << 8) | (patch))
 #define STEREO_DECLARE_VERSION \
@@ -63,6 +64,31 @@ enum stereo_subclass {
 /* The loaded library's version, as STEREO_DECLARE_VERSION_ENCODE gives it.
  * Since 1.1.0. */
 unsigned stereo_declare_version(void);
+
+/* Additive X11 compositor receipts, since 1.9. See X11-PRESENTATION.md.
+ * The caller owns the Display, window, event mask and event loop. A context
+ * must be closed before destroying its window or disconnecting the Display.
+ * These calls are serialized with PresentPixmap on the same connection. */
+struct stereo_x11_presentation;
+struct stereo_x11_presentation_receipt {
+    uint64_t session, request;
+    uint32_t serial, outcome, reason;
+    uint64_t seconds, sequence;
+    uint32_t nanoseconds, refresh, flags;
+};
+/* 1 supported, 0 absent, negative errno for invalid data/arguments. */
+int stereo_x11_presentation_supported(Display *, Window, uint32_t *clock_id);
+int stereo_x11_presentation_create(Display *, Window, uint64_t session,
+                                   struct stereo_x11_presentation **);
+int stereo_x11_presentation_arm(struct stereo_x11_presentation *, uint64_t request,
+                                uint32_t present_serial);
+/* Pass NULL event to poll. Returns 1 for the current terminal record, 0 for
+ * absent/unrelated/stale data, or negative errno. Reading does not ACK. */
+int stereo_x11_presentation_read(struct stereo_x11_presentation *, const XEvent *,
+                                 struct stereo_x11_presentation_receipt *);
+int stereo_x11_presentation_cancel(struct stereo_x11_presentation *);
+int stereo_x11_presentation_ack(struct stereo_x11_presentation *);
+void stereo_x11_presentation_close(struct stereo_x11_presentation *);
 
 /* X11 (and Xwayland): the support version announced on the root window by
  * _KDE_NET_WM_STEREO_CONTENT_SUPPORTED, or zero when absent. Declaring

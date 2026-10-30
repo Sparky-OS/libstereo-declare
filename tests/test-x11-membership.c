@@ -115,7 +115,7 @@ int main(int argc, char **argv)
 
     /* All entries, not only the first 1024, survive a removal. */
     unsigned long many[1052];
-    for (unsigned i = 0; i < 1050; i++) many[i] = 0x100000 + i;
+    for (unsigned i = 0; i < 1050; i++) many[i] = 0x70000000UL + i;
     many[1050] = child; many[1051] = child;
     XChangeProperty(d, a, list, XA_WINDOW, 32, PropModeReplace, (unsigned char *)many, 1052);
     events(d, child, &writes);
