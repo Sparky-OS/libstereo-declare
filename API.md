@@ -1,5 +1,8 @@
 # stereo-declare API, version 1.5
 
+The additive 1.9 X11 presentation-receipt implementation contract is documented in [X11-PRESENTATION.md](X11-PRESENTATION.md).
+That document does not advertise an implemented API; the existing entry points below keep their current meanings.
+
 **For programmers:** how a program declares a 3D window or surface once, on X11 and on Wayland.
 
 ## What a declaration says
