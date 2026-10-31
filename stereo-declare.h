@@ -170,6 +170,26 @@ int stereo_declare_x11_one_view_commit(Display *display, Window window,
 int stereo_declare_x11_child(Display *display, Window parent, Window child, enum stereo_layout layout,
                              enum stereo_class content_class, unsigned subclass,
                              unsigned view_width, unsigned view_height);
+/* Native full-SBS presentation on a private X11 connection. Since 1.9.0.
+ * Optional frontend use is discovered with this source API macro; the server
+ * must advertise child placement and the versioned presentation receipt.
+ * Pixels are RGB32 (0x00RRGGBB), copied without resampling. At most two server
+ * pixmaps and one coalesced native frame are retained. show() supersedes the
+ * prior local tag without reporting it discarded. poll() reports only the
+ * current tag; outcome uses the receipt's presented/discarded/rejected values.
+ * A successful show queues a frame, never proves it was displayed. Keep
+ * polling after presentation to observe native-child/backend retirement.
+ * hide/close cancel without notifying; the frontend retires its current tag.
+ * Calls for a surface are serialized on the frontend thread. */
+#define STEREO_DECLARE_X11_SURFACE_API 1
+struct stereo_x11_surface;
+int stereo_x11_surface_create(const char *display_name, Window parent, struct stereo_x11_surface **out);
+int stereo_x11_surface_show(struct stereo_x11_surface *, const uint32_t *rgb32, int width, int height,
+                            int stride, const struct stereo_x11_child_place *, uint64_t tag);
+int stereo_x11_surface_poll(struct stereo_x11_surface *, uint64_t *tag, unsigned *outcome);
+void stereo_x11_surface_hide(struct stereo_x11_surface *);
+void stereo_x11_surface_close(struct stereo_x11_surface *);
+
 /* Move only the child's membership between ordinary owners, without reading or
  * changing any property on the child. None attaches/detaches one end; equal
  * parents ensure one membership. Unrelated children and their order stay intact.

@@ -16,7 +16,8 @@ set(STEREO_DECLARE_PYTHON_DIR "${CMAKE_INSTALL_DATADIR}/stereo-declare/python" C
     "Where stereo_declare.py is installed (a distribution sets its site-packages folder)")
 
 find_package(PkgConfig REQUIRED)
-find_package(X11 REQUIRED)
+find_package(X11 REQUIRED COMPONENTS Xpresent Xext Xcomposite)
+find_package(Threads REQUIRED)
 pkg_check_modules(Wayland REQUIRED IMPORTED_TARGET wayland-client)
 pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
 find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
@@ -46,13 +47,13 @@ foreach(protocol stereo content_type)
         DEPENDS ${${protocol}_xml} VERBATIM)
 endforeach()
 
-add_library(stereo-declare SHARED stereo-declare.c stereo-presentation.c stereo-client.h stereo-protocol.c content_type-client.h content_type-protocol.c)
+add_library(stereo-declare SHARED stereo-declare.c stereo-presentation.c stereo-x11-surface.c stereo-client.h stereo-protocol.c content_type-client.h content_type-protocol.c)
 target_compile_features(stereo-declare PRIVATE c_std_11)
 target_compile_options(stereo-declare PRIVATE -Wall -Wextra $<$<BOOL:${STEREO_DECLARE_WERROR}>:-Werror>)
 target_include_directories(stereo-declare PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 # stereo-declare.h includes <X11/Xlib.h>, so X11 is part of the interface; Wayland is not.
-target_link_libraries(stereo-declare PUBLIC X11::X11 PRIVATE PkgConfig::Wayland)
+target_link_libraries(stereo-declare PUBLIC X11::X11 PRIVATE PkgConfig::Wayland X11::Xpresent X11::Xext X11::Xcomposite Threads::Threads)
 set_target_properties(stereo-declare PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
 add_library(StereoDeclare::stereo-declare ALIAS stereo-declare)
 

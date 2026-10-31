@@ -6,6 +6,7 @@ Name: stereo-declare
 Description: Declare full side-by-side stereo windows and surfaces on X11 and Wayland
 Version: @PROJECT_VERSION@
 Requires: x11
-Requires.private: wayland-client
+Requires.private: wayland-client xpresent xext xcomposite
+Libs.private: -pthread
 Libs: -L${libdir} -lstereo-declare
 Cflags: -I${includedir}
