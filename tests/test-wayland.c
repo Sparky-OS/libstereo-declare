@@ -10,6 +10,7 @@
 #include "stereo-server.h"
 
 #include <errno.h>
+#include <math.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,7 +28,8 @@ static int failures;
 
 /* What the server saw. */
 static struct {
-    int stereo_creates, stereo_destroys, set_contents;
+    int stereo_creates, stereo_destroys, set_contents, set_view_sources, surface_commits;
+    double last_view_source[4];
     unsigned last_content;
     int type_creates, type_destroys, set_types;
     unsigned last_type;
@@ -57,6 +59,7 @@ static void surface_commit(struct wl_client *c, struct wl_resource *resource)
 {
     (void)c;
     (void)resource;
+    seen.surface_commits++;
 }
 
 static const struct wl_surface_interface surface_impl = {.destroy = surface_destroy, .commit = surface_commit};
@@ -96,7 +99,23 @@ static void stereo_set_content(struct wl_client *c, struct wl_resource *resource
     seen.last_content = content;
 }
 
-static const struct kde_stereo_content_v1_interface stereo_impl = {stereo_destroy, stereo_set_content};
+static void stereo_set_view_source(struct wl_client *c, struct wl_resource *resource,
+                                   wl_fixed_t x, wl_fixed_t y, wl_fixed_t width, wl_fixed_t height)
+{
+    (void)c;
+    (void)resource;
+    seen.set_view_sources++;
+    seen.last_view_source[0] = wl_fixed_to_double(x);
+    seen.last_view_source[1] = wl_fixed_to_double(y);
+    seen.last_view_source[2] = wl_fixed_to_double(width);
+    seen.last_view_source[3] = wl_fixed_to_double(height);
+}
+
+static const struct kde_stereo_content_v1_interface stereo_impl = {
+    .destroy = stereo_destroy,
+    .set_content = stereo_set_content,
+    .set_view_source = stereo_set_view_source,
+};
 
 static void stereo_resource_destroy(struct wl_resource *resource)
 {
@@ -168,7 +187,8 @@ static void depth_resource_destroy(struct wl_resource *resource)
 static void manager_get_depth(struct wl_client *c, struct wl_resource *resource, uint32_t id, struct wl_resource *surface)
 {
     (void)surface;
-    struct wl_resource *depth = wl_resource_create(c, &kde_stereo_depth_v1_interface, wl_resource_get_version(resource), id);
+    uint32_t version = wl_resource_get_version(resource);
+    struct wl_resource *depth = wl_resource_create(c, &kde_stereo_depth_v1_interface, version < 3 ? version : 3, id);
     wl_resource_set_implementation(depth, &depth_impl, NULL, depth_resource_destroy);
     seen.depth_creates++;
     seen.last_depth = depth;
@@ -299,7 +319,7 @@ static void pump(void)
 int main(void)
 {
     CHECK(stereo_declare_version() == STEREO_DECLARE_VERSION);
-    CHECK(STEREO_DECLARE_VERSION == STEREO_DECLARE_VERSION_ENCODE(1, 8, 0));
+    CHECK(STEREO_DECLARE_VERSION == STEREO_DECLARE_VERSION_ENCODE(1, 9, 0));
 
     int fds[2];
     if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds) != 0) {
@@ -308,7 +328,7 @@ int main(void)
     server = wl_display_create();
     loop = wl_display_get_event_loop(server);
     wl_global_create(server, &wl_compositor_interface, 4, NULL, bind_compositor);
-    struct wl_global *stereo_global = wl_global_create(server, &kde_stereo_content_manager_v1_interface, 3, NULL, bind_manager);
+    struct wl_global *stereo_global = wl_global_create(server, &kde_stereo_content_manager_v1_interface, 4, NULL, bind_manager);
     struct wl_global *type_global = wl_global_create(server, &wp_content_type_manager_v1_interface, 1, NULL, bind_type_manager);
     wl_client_create(server, fds[0]);
     client = wl_display_connect_to_fd(fds[1]);
@@ -323,8 +343,9 @@ int main(void)
     CHECK(stereo_declare_wayland_init(client, NULL) == -EBUSY);
     pump();
     CHECK(stereo_supported_wayland() == 1);
-    /* Version 3: the desktop's depth of surfaces, beside version 2's one view wide surfaces. */
-    CHECK(seen.manager_version == 3);
+    /* Version 4 adds view sources; depth keeps its version-3 child interface. */
+    CHECK(seen.manager_version == 4);
+    CHECK(stereo_view_source_supported_wayland() == 1);
     CHECK(stereo_depth_supported_wayland() == 1);
     CHECK(compositor && type_manager);
 
@@ -420,6 +441,31 @@ int main(void)
     pump();
     CHECK(seen.set_contents == 3 && seen.last_content == 3);
 
+    /* Fractional view geometry reuses the declaration and never commits it. */
+    const int commits_before = seen.surface_commits;
+    CHECK(stereo_declare_wayland_view_source(surface, 0.25, 0.5, 100.5, 107.25) == 0);
+    pump();
+    CHECK(seen.set_view_sources == 1 && seen.stereo_creates == 1);
+    CHECK(seen.last_view_source[0] == 0.25 && seen.last_view_source[1] == 0.5);
+    CHECK(seen.last_view_source[2] == 100.5 && seen.last_view_source[3] == 107.25);
+    CHECK(seen.surface_commits == commits_before && seen.set_contents == 3);
+    CHECK(stereo_declare_wayland_view_source(NULL, 0, 0, 1, 1) == -EINVAL);
+    CHECK(stereo_declare_wayland_view_source(surface, -1, 0, 1, 1) == -EINVAL);
+    CHECK(stereo_declare_wayland_view_source(surface, 0, 0, 0, 1) == -EINVAL);
+    CHECK(stereo_declare_wayland_view_source(surface, 0, 0, 1e-6, 1) == -EINVAL);
+    CHECK(stereo_declare_wayland_view_source(surface, NAN, 0, 1, 1) == -EINVAL);
+    CHECK(stereo_declare_wayland_view_source(surface, 0, INFINITY, 1, 1) == -EINVAL);
+    CHECK(stereo_declare_wayland_view_source(surface, 0, 0, 8388608, 1) == -EINVAL);
+    struct wl_surface *undeclared = wl_compositor_create_surface(compositor);
+    CHECK(stereo_declare_wayland_view_source(undeclared, 0, 0, 1, 1) == -ENOENT);
+    wl_surface_destroy(undeclared);
+    pump();
+    CHECK(seen.set_view_sources == 1 && seen.stereo_creates == 1);
+    CHECK(stereo_declare_wayland_view_source(surface, -1, -1, -1, -1) == 0);
+    pump();
+    CHECK(seen.set_view_sources == 2);
+    for (int i = 0; i < 4; ++i) CHECK(seen.last_view_source[i] == -1);
+
     /* Declaring none keeps the object. */
     CHECK(stereo_declare_wayland(surface, STEREO_NONE, STEREO_CLASS_NONE, 0) == 0);
     pump();
@@ -500,6 +546,22 @@ int main(void)
         wl_surface_destroy(followed);
     }
 
+    /* The published version-3 compositor remains usable, with an explicit
+     * source-geometry refusal and no new request sent. */
+    wl_global_destroy(stereo_global);
+    stereo_global = wl_global_create(server, &kde_stereo_content_manager_v1_interface, 3, NULL, bind_manager);
+    pump();
+    CHECK(stereo_declare_wayland_init(client, NULL) == 0);
+    pump();
+    CHECK(seen.manager_version == 3 && stereo_depth_supported_wayland() == 1);
+    CHECK(stereo_view_source_supported_wayland() == 0);
+    CHECK(stereo_declare_wayland_format(surface, STEREO_SBS_FULL) == 0);
+    CHECK(stereo_declare_wayland_view_source(surface, 0, 0, 100.5, 108) == -ENOTSUP);
+    pump();
+    CHECK(seen.set_view_sources == 2 && wl_display_get_error(client) == 0);
+    stereo_declare_wayland_finish();
+    pump();
+
     /* The content type manager announced after the stereo one is still used,
      * and a compositor that offers version 1 only is bound at version 1. */
     wl_global_destroy(type_global);
@@ -509,6 +571,8 @@ int main(void)
     CHECK(stereo_declare_wayland_init(client, NULL) == 0);
     pump();
     CHECK(stereo_supported_wayland() == 1 && seen.manager_version == 1);
+    CHECK(stereo_view_source_supported_wayland() == 0);
+    CHECK(stereo_declare_wayland_view_source(surface, -1, -1, -1, -1) == -ENOTSUP);
     /* Without version 3 there is no depth to follow. */
     CHECK(stereo_depth_supported_wayland() == 0);
     {

@@ -40,3 +40,8 @@ The protocol it speaks, `kde-stereo-content-v1`, lives in the edition's fork of 
 The one-value shape of the declaration follows the review of Emmanuel Gil Peyrot (linkmauve) on [wayland-protocols !533](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/merge_requests/533).
 
 Licence: MIT, see [LICENSE](LICENSE).
+
+Version 1.9 adds the protocol-4 `set_view_source` declaration and a C helper for native per-view source rectangles.
+Programs retain native samples; KWin performs the one resize.
+Existing full side-by-side and mono calls retain their behavior on older compositors.
+The source helper reports `-ENOTSUP` where protocol 4 is unavailable; see API.md.

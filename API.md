@@ -43,6 +43,8 @@ Every call returns 0 or a negative `errno` value (`-EINVAL` for a bad argument, 
 | `stereo_declare_wayland_use_content_type(surface, content_type)` | 1.0.0 | Hand over the surface's existing `wp_content_type_v1` |
 | `stereo_declare_wayland(surface, layout, class, subclass)` | 1.0.0 | Declare a surface; a new call updates the same declaration |
 | `stereo_declare_wayland_format(surface, layout)` | 1.1.0 | Declare the format only; the surface's content type stays the program's |
+| `stereo_view_source_supported_wayland()` | 1.9.0 | Nonzero when protocol 4 native view sources are available |
+| `stereo_declare_wayland_view_source(surface, x, y, width, height)` | 1.9.0 | Select one native rectangle independently in each view; all four values -1 unset it |
 | `stereo_remove_wayland(surface)` | 1.0.0 | Remove the declaration, before the surface is destroyed |
 | `stereo_declare_wayland_finish()` | 1.0.0 | Destroy everything the library made, before disconnecting |
 | `stereo_depth_supported_wayland()` | 1.5.0 | 1 once the compositor follows surfaces' desktop depth (protocol version 3), else 0 |
@@ -332,3 +334,15 @@ This call neither reparents the X window nor changes its content, class, one-vie
 Keep the content declaration for the native window's lifetime, even when a GLX or Vulkan handle is recreated.
 The caller still owns effective visibility, clipping, placement and input, and must detach membership before destroying an owner.
 At the actual content window's destruction, use `stereo_remove_x11_child()` for a listed child, or detach and remove its content separately.
+
+## Native view sources (1.9.0, Wayland protocol 4)
+
+A cropped packed buffer can retain every native sample and declare the same fractional source rectangle independently within each view.
+Call `stereo_declare_wayland_format(surface, STEREO_SBS_FULL)` first, then `stereo_declare_wayland_view_source(surface, x, y, width, height)` before the surface commit.
+Coordinates are native buffer pixels after the buffer transform, relative to each half of the viewport source, at Wayland's 24.8 fixed-point precision.
+The viewport destination still gives the logical drawing size; only the compositor resizes the selected samples.
+Set all four source values to -1 to unset; mono or declaration removal also clears the rectangle.
+This call neither changes the content format nor commits the surface.
+It returns `-ENOTSUP` when protocol 4 is absent, `-ENOENT` without a library-owned declaration, and `-EINVAL` for invalid or unrepresentable coordinates.
+The compositor checks the source against the attached buffer at commit.
+An older compositor remains usable for ordinary full side-by-side declarations, but cannot implement fractional per-view cropping; the caller must report that explicit limitation.

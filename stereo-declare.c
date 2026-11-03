@@ -6,6 +6,7 @@
 #include <X11/Xatom.h>
 #include <errno.h>
 #include <limits.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -431,8 +432,8 @@ static void global(void *data, struct wl_registry *registry, uint32_t name,
     (void)data;
     if (!strcmp(interface, kde_stereo_content_manager_v1_interface.name) && version >= 1 && !state.manager) {
         /* Version 2 makes a declared surface one view wide when it has no viewport destination;
-         * version 3 follows surfaces' desktop depth. */
-        const uint32_t bound = version < 3 ? version : 3;
+         * version 3 follows surfaces' desktop depth; version 4 carries native view sources. */
+        const uint32_t bound = version < 4 ? version : 4;
         state.manager = wl_registry_bind(registry, name, &kde_stereo_content_manager_v1_interface, bound);
         state.manager_name = name;
         state.version = state.manager ? bound : 0;
@@ -570,6 +571,43 @@ int stereo_declare_wayland_format(struct wl_surface *surface, enum stereo_layout
         return -EINVAL;
     }
     return declare_wayland(surface, layout, -1);
+}
+
+unsigned stereo_view_source_supported_wayland(void)
+{
+    return state.manager && state.version >= 4 ? 1 : 0;
+}
+
+int stereo_declare_wayland_view_source(struct wl_surface *surface,
+                                      double x, double y, double width, double height)
+{
+    if (!surface) {
+        return -EINVAL;
+    }
+    if (!stereo_view_source_supported_wayland()) {
+        return -ENOTSUP;
+    }
+    const int unset = x == -1 && y == -1 && width == -1 && height == -1;
+    const double maximum = INT32_MAX / 256.0;
+    if (!unset && (!isfinite(x) || !isfinite(y) || !isfinite(width) || !isfinite(height)
+                   || x < 0 || y < 0 || width <= 0 || height <= 0
+                   || x > maximum || y > maximum || width > maximum || height > maximum)) {
+        return -EINVAL;
+    }
+    const wl_fixed_t fw = wl_fixed_from_double(width), fh = wl_fixed_from_double(height);
+    if (!unset && (fw <= 0 || fh <= 0)) {
+        return -EINVAL;
+    }
+    struct declaration *entry = state.declarations;
+    while (entry && entry->surface != surface) {
+        entry = entry->next;
+    }
+    if (!entry || !entry->stereo) {
+        return -ENOENT;
+    }
+    kde_stereo_content_v1_set_view_source(entry->stereo,
+        wl_fixed_from_double(x), wl_fixed_from_double(y), fw, fh);
+    return 0;
 }
 
 int stereo_remove_wayland(struct wl_surface *surface)

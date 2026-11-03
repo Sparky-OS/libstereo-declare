@@ -12,7 +12,7 @@ extern "C" {
  * meaning below; a minor version only adds. STEREO_DECLARE_VERSION is the
  * header's version, stereo_declare_version() the loaded library's. */
 #define STEREO_DECLARE_VERSION_MAJOR 1
-#define STEREO_DECLARE_VERSION_MINOR 8
+#define STEREO_DECLARE_VERSION_MINOR 9
 #define STEREO_DECLARE_VERSION_PATCH 0
 #define STEREO_DECLARE_VERSION_ENCODE(major, minor, patch) (((major) << 16) | ((minor) << 8) | (patch))
 #define STEREO_DECLARE_VERSION \
@@ -23,8 +23,8 @@ struct wl_surface;
 struct wl_event_queue;
 struct wp_content_type_v1;
 
-/* The one stereo format: full side by side, the two eyes next to each
- * other, the left eye first, each at the resolution it has (never
+/* The one stereo format: full side by side, the two views next to each
+ * other, the left view first, each at the resolution it has (never
  * stretched or squeezed by the program). Values of kde_stereo_content_v1
  * and of the X11 property _KDE_NET_WM_STEREO_CONTENT. */
 enum stereo_layout {
@@ -172,7 +172,8 @@ int stereo_declare_wayland_init(struct wl_display *display, struct wl_event_queu
  * Since 1.4.0 the library binds version 2 of the protocol when the
  * compositor offers it: a declared surface without a viewport destination is
  * then one view wide, half its buffer's width. Since 1.5.0 it binds version 3
- * when offered, for the desktop depth calls below. */
+ * when offered, for the desktop depth calls below. Since 1.9.0 it binds version 4
+ * when offered, for native per-view source geometry. */
 unsigned stereo_supported_wayland(void);
 /* For a surface that already has a wp_content_type_v1 of the caller's:
  * hand it over before the surface's first declaration, so the library sets
@@ -181,8 +182,8 @@ unsigned stereo_supported_wayland(void);
 int stereo_declare_wayland_use_content_type(struct wl_surface *surface, struct wp_content_type_v1 *content_type);
 /* Declare the surface once; a new call updates the same declaration.
  * Effective with the surface's next commit. Size the surface at the size
- * one eye is shown at (a wp_viewport destination) and attach a buffer
- * holding both eyes at their own resolution: the compositor resizes them
+ * one view is shown at (a wp_viewport destination) and attach a buffer
+ * holding both views at their own resolution: the compositor resizes them
  * once to that size. */
 int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout,
                            enum stereo_class content_class, unsigned subclass);
@@ -191,6 +192,18 @@ int stereo_declare_wayland(struct wl_surface *surface, enum stereo_layout layout
 int stereo_declare_wayland_format(struct wl_surface *surface, enum stereo_layout layout);
 /* Remove before destroying the wl_surface. Effective on its next commit. */
 int stereo_remove_wayland(struct wl_surface *surface);
+/* Nonzero when native per-view source geometry is supported (protocol 4).
+ * Since 1.9.0. */
+unsigned stereo_view_source_supported_wayland(void);
+/* Select the same native source rectangle independently in each view of an
+ * existing declaration, without resizing samples or committing the surface.
+ * Coordinates use the protocol's 24.8 fixed-point precision. Set all four
+ * values to -1 to unset the rectangle. Mono and removal also clear it.
+ * Returns -ENOTSUP without protocol 4, -ENOENT without a declaration, or
+ * -EINVAL for invalid/unrepresentable coordinates. The compositor checks
+ * source bounds when the next buffer is committed. Since 1.9.0. */
+int stereo_declare_wayland_view_source(struct wl_surface *surface,
+                                      double x, double y, double width, double height);
 /* Call before disconnecting the display. Destroys all library-owned proxies. */
 void stereo_declare_wayland_finish(void);
 
