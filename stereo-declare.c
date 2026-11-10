@@ -410,6 +410,10 @@ struct depth_follower {
     struct kde_stereo_depth_v1 *depth;
     stereo_depth_listener listener;
     void *data;
+    int limits_known;
+    struct stereo_depth_limits limits;
+    stereo_depth_limits_listener limits_listener;
+    void *limits_data;
     struct depth_follower *next;
 };
 
@@ -426,14 +430,19 @@ static _Thread_local struct {
     struct depth_follower *followers;
 } state;
 
+/* The kde_stereo_content_manager_v1 version of protocol/kde-stereo-content-v1.xml. */
+#define STEREO_PROTOCOL_VERSION 5
+
 static void global(void *data, struct wl_registry *registry, uint32_t name,
                    const char *interface, uint32_t version)
 {
     (void)data;
     if (!strcmp(interface, kde_stereo_content_manager_v1_interface.name) && version >= 1 && !state.manager) {
         /* Version 2 makes a declared surface one view wide when it has no viewport destination;
-         * version 3 follows surfaces' desktop depth; version 4 carries native view sources. */
-        const uint32_t bound = version < 4 ? version : 4;
+         * version 3 follows surfaces' desktop depth; version 4 carries native view sources;
+         * version 5 sends the depth limits. Never bind above what this copy of the protocol
+         * knows: the compositor then sends no event the generated interface lacks. */
+        const uint32_t bound = version < STEREO_PROTOCOL_VERSION ? version : STEREO_PROTOCOL_VERSION;
         state.manager = wl_registry_bind(registry, name, &kde_stereo_content_manager_v1_interface, bound);
         state.manager_name = name;
         state.version = state.manager ? bound : 0;
@@ -672,7 +681,18 @@ static void depth_state(void *data, struct kde_stereo_depth_v1 *depth, uint32_t 
     }
 }
 
-static const struct kde_stereo_depth_v1_listener depth_listener = {depth_state};
+static void depth_limits(void *data, struct kde_stereo_depth_v1 *depth, wl_fixed_t sunk, wl_fixed_t popped)
+{
+    (void)depth;
+    struct depth_follower *follower = data;
+    follower->limits = (struct stereo_depth_limits){wl_fixed_to_double(sunk), wl_fixed_to_double(popped)};
+    follower->limits_known = 1;
+    if (follower->limits_listener) {
+        follower->limits_listener(follower->limits_data, follower->surface, &follower->limits);
+    }
+}
+
+static const struct kde_stereo_depth_v1_listener depth_listener = {depth_state, depth_limits};
 
 /* The surface's follower, made when @a create; NULL with errno-style @a error set otherwise. */
 static struct depth_follower *follower_of(struct wl_surface *surface, int create, int *error)
@@ -746,6 +766,49 @@ int stereo_depth_wayland_unwatch(struct wl_surface *surface)
     return 0;
 }
 
+unsigned stereo_depth_limits_supported_wayland(void)
+{
+    return state.manager && state.version >= 5 ? 1 : 0;
+}
+
+int stereo_depth_wayland_get_limits(struct wl_surface *surface, struct stereo_depth_limits *limits)
+{
+    if (!surface || !limits) {
+        return -EINVAL;
+    }
+    if (!stereo_depth_limits_supported_wayland()) {
+        return -ENOTSUP;
+    }
+    int error = 0;
+    const struct depth_follower *entry = follower_of(surface, 1, &error);
+    if (!entry) {
+        return error;
+    }
+    if (!entry->limits_known) {
+        return -ENODATA;
+    }
+    *limits = entry->limits;
+    return 0;
+}
+
+int stereo_depth_wayland_watch_limits(struct wl_surface *surface, stereo_depth_limits_listener listener, void *data)
+{
+    if (!surface || !listener) {
+        return -EINVAL;
+    }
+    if (!stereo_depth_limits_supported_wayland()) {
+        return -ENOTSUP;
+    }
+    int error = 0;
+    struct depth_follower *entry = follower_of(surface, 1, &error);
+    if (!entry) {
+        return error;
+    }
+    entry->limits_listener = listener;
+    entry->limits_data = data;
+    return 0;
+}
+
 int stereo_depth_wayland_set_desktop_depth(struct wl_surface *surface, int desktop_depth)
 {
     int error = 0;
@@ -782,4 +845,75 @@ int stereo_depth_wayland_unset_place(struct wl_surface *surface)
     }
     kde_stereo_depth_v1_unset_place(entry->depth);
     return 0;
+}
+
+unsigned stereo_depth_limits_supported_x11(Display *display)
+{
+    return stereo_supported_x11(display) >= 10 ? 1 : 0;
+}
+
+/* _KDE_NET_WM_STEREO_DEPTH_LIMITS: two CARDINAL/32 values, 24.8 fixed point (wl_fixed_t). */
+static int read_depth_limits(Display *display, Window window, Atom atom, struct stereo_depth_limits *limits)
+{
+    Atom type;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *data = NULL;
+    int result = -ENOENT;
+    if (XGetWindowProperty(display, window, atom, 0, 3, False, XA_CARDINAL,
+                           &type, &format, &count, &remaining, &data) == Success) {
+        if (type == None) {
+            result = -ENODATA;
+        } else if (type == XA_CARDINAL && format == 32 && count == 2 && remaining == 0) {
+            const unsigned long *values = (const unsigned long *)data;
+            limits->sunk = (int32_t)(uint32_t)values[0] / 256.0;
+            limits->popped = (int32_t)(uint32_t)values[1] / 256.0;
+            result = 0;
+        } else {
+            result = -EPROTO;
+        }
+    }
+    XFree(data);
+    return result;
+}
+
+int stereo_depth_x11_get_limits(Display *display, Window window, struct stereo_depth_limits *limits)
+{
+    if (!display || !window || !limits) {
+        return -EINVAL;
+    }
+    if (!stereo_depth_limits_supported_x11(display)) {
+        return -ENOTSUP;
+    }
+    const Atom atom = XInternAtom(display, "_KDE_NET_WM_STEREO_DEPTH_LIMITS", True);
+    if (atom == None) {
+        return -ENODATA;
+    }
+    return read_depth_limits(display, window, atom, limits);
+}
+
+int stereo_depth_x11_limits_event(Display *display, Window window, const XEvent *event,
+                                  struct stereo_depth_limits *limits)
+{
+    if (!display || !window || !limits) {
+        return -EINVAL;
+    }
+    if (event && (event->type != PropertyNotify || event->xproperty.window != window)) {
+        return 0;
+    }
+    const Atom atom = XInternAtom(display, "_KDE_NET_WM_STEREO_DEPTH_LIMITS", True);
+    if (event && event->xproperty.atom != atom) {
+        return 0;
+    }
+    if (!stereo_depth_limits_supported_x11(display)) {
+        return -ENOTSUP;
+    }
+    if (event && event->xproperty.state == PropertyDelete) {
+        return -ENODATA;
+    }
+    if (atom == None) {
+        return -ENODATA;
+    }
+    const int result = read_depth_limits(display, window, atom, limits);
+    return result == 0 && event ? 1 : result;
 }

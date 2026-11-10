@@ -24,7 +24,7 @@ if(XVFB_RUN)
         if(NOT _xlib_missing)
             add_test(NAME python-x11 COMMAND ${XVFB_RUN} -a ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/../python/tests/test_stereo_declare.py)
-            set_tests_properties(python-x11 PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:stereo-declare>")
+            set_tests_properties(python-x11 PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:stereo-declare>;STEREO_DECLARE_TEST_SHIM=$<TARGET_FILE:wayland-shim>")
         else()
             message(STATUS "python3-xlib not found: the Python module test is not run")
         endif()
@@ -60,3 +60,14 @@ if(XVFB_RUN)
     add_test(NAME x11-membership COMMAND ${XVFB_RUN} -a $<TARGET_FILE:test-x11-membership>)
     set_tests_properties(x11-membership PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:stereo-declare>")
 endif()
+
+add_executable(test-x11-depth-limits test-x11-depth-limits.c)
+target_link_libraries(test-x11-depth-limits PRIVATE stereo-declare X11::X11)
+if(XVFB_RUN)
+    add_test(NAME x11-depth-limits COMMAND ${XVFB_RUN} -a $<TARGET_FILE:test-x11-depth-limits>)
+endif()
+
+# The Python Wayland binding runs against an in-process compositor made by this small shared object.
+add_library(wayland-shim SHARED wayland-shim.c stereo-code.c stereo-server.h)
+target_include_directories(wayland-shim PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(wayland-shim PRIVATE PkgConfig::Wayland PkgConfig::WaylandServer)

@@ -120,6 +120,94 @@ check(read(replacement, layout) == [3] and read(replacement, view_size) == [1920
 d.close()
 check(read(replacement, view_size) is None, 'close removes the size one view is shown at')
 
+
+limits_atom = x.intern_atom('_KDE_NET_WM_STEREO_DEPTH_LIMITS')
+
+
+def write_limits(w, sunk, popped):
+    w.change_property(limits_atom, Xatom.CARDINAL, 32, [int(sunk * 256) & 0xffffffff, int(popped * 256) & 0xffffffff])
+    x.sync()
+
+
+# the person's depth limits of a declared X11 window: not offered below support version 10
+d = stereo_declare.Declaration()
+write_limits(replacement, 10, 4)
+check(d.version == 6, 'support version 6 announced')
+try:
+    d.depth_limits(replacement.id)
+except stereo_declare.DepthLimitsNotOffered:
+    check(True, 'depth limits: support version 6 does not offer them, whatever is written')
+else:
+    check(False, 'depth limits: support version 6 does not offer them, whatever is written')
+d.close()
+root.change_property(support, Xatom.CARDINAL, 32, [10])
+x.sync()
+d = stereo_declare.Declaration()
+replacement.delete_property(limits_atom)
+x.sync()
+try:
+    d.depth_limits(replacement.id)
+except stereo_declare.DepthLimitsNotDelivered:
+    check(True, 'depth limits: offered, the window does not declare yet, says so and gives no zeros')
+else:
+    check(False, 'depth limits: offered, the window does not declare yet, says so and gives no zeros')
+write_limits(replacement, 10.5, 4.25)
+check(d.depth_limits(replacement.id) == (10.5, 4.25) and d.depth_limits(replacement.id).popped == 4.25,
+      'depth limits: sunk then popped, 24.8 fixed point')
+write_limits(replacement, 14.75, 6)
+check(tuple(stereo_declare.x11_depth_limits(d.native, replacement.id, d.lib)) == (14.75, 6.0), 'depth limits: live after a change')
+replacement.change_property(limits_atom, Xatom.CARDINAL, 32, [1, 2, 3])
+x.sync()
+try:
+    d.depth_limits(replacement.id)
+except OSError as exc:
+    check(exc.errno == 71, 'depth limits: a property of the wrong shape is a protocol error')
+else:
+    check(False, 'depth limits: a property of the wrong shape is a protocol error')
+d.close()
+
+# the Wayland side, against an in-process compositor made by the test shim
+import ctypes
+import os as _os
+shim_path = _os.environ.get('STEREO_DECLARE_TEST_SHIM')
+if shim_path:
+    shim = ctypes.CDLL(shim_path)
+    shim.shim_start.argtypes = [ctypes.c_uint]
+    shim.shim_start.restype = ctypes.c_void_p
+    shim.shim_surface.restype = ctypes.c_void_p
+    shim.shim_send_limits.argtypes = [ctypes.c_double, ctypes.c_double]
+    for offered, version in ((False, 4), (True, 6)):
+        display_ptr = shim.shim_start(version)
+        surface_ptr = shim.shim_surface()
+        shim.shim_pump()
+        with stereo_declare.Wayland(display_ptr) as wl:
+            shim.shim_pump()
+            check(wl.offered == offered, f'wayland depth limits: compositor protocol {version}, offered is {offered}')
+            try:
+                wl.depth_limits(surface_ptr)
+            except stereo_declare.DepthLimitsNotOffered:
+                check(not offered, 'wayland depth limits: not offered says so')
+            except stereo_declare.DepthLimitsNotDelivered:
+                check(offered, 'wayland depth limits: offered, not delivered yet')
+            else:
+                check(False, 'wayland depth limits: no numbers before the compositor sends them')
+            if offered:
+                heard = []
+                wl.watch(surface_ptr, lambda wl_surface, limits: heard.append((wl_surface, limits)))
+                shim.shim_pump()
+                shim.shim_send_limits(10.5, 4.25)
+                shim.shim_pump()
+                check(wl.depth_limits(surface_ptr) == (10.5, 4.25), 'wayland depth limits: the compositor\'s numbers')
+                check(heard == [(surface_ptr, (10.5, 4.25))], 'wayland depth limits: the listener hears the surface and the numbers')
+                shim.shim_send_limits(14.75, 6)
+                shim.shim_pump()
+                check(len(heard) == 2 and heard[1][1] == (14.75, 6.0), 'wayland depth limits: live after a change')
+                wl.unwatch(surface_ptr)
+            shim.shim_pump()
+        shim.shim_stop()
+else:
+    print('SKIP: STEREO_DECLARE_TEST_SHIM is not set, the Wayland binding is not run')
+
 pids = {os.getpid()}
 check(os.getpid() in stereo_declare.descendants(os.getpid(), pids), 'the process tree includes its root')
 

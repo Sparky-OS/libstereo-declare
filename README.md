@@ -9,7 +9,7 @@ On X11, where a window's buffer is its own pixmap, a program whose views are sho
 
 It is a small C library (MIT) for X11 and Wayland, used by the edition's mpv, VLC, Qt Multimedia, MpvQt, Kdenlive, Marble, QEMU, SPICE and others.
 
-**Status:** version 1.9.0, a stable C API with semantic versioning; it works with Stereo KWin in Sparky Stereo OS, Daniel Ramos's edition of SparkyLinux (by Paweł "pavroo" Pijanowski). On other desktops the calls return `-ENOTSUP`, nothing is sent, and the window stays an ordinary 2D window.
+**Status:** version 1.10.0, a stable C API with semantic versioning; it works with Stereo KWin in Sparky Stereo OS, Daniel Ramos's edition of SparkyLinux (by Paweł "pavroo" Pijanowski). On other desktops the calls return `-ENOTSUP`, nothing is sent, and the window stays an ordinary 2D window.
 
 ## Start here
 
@@ -45,3 +45,7 @@ Version 1.9 adds the protocol-4 `set_view_source` declaration and a C helper for
 Programs retain native samples; KWin performs the one resize.
 Existing full side-by-side and mono calls retain their behavior on older compositors.
 The source helper reports `-ENOTSUP` where protocol 4 is unavailable; see API.md.
+
+Version 1.10 hands a program the person's depth limits: Stereo KWin resolves them per output (the person's sunk and popped limits, built on the output's display) and sends them as `kde_stereo_depth_v1.depth_limits` (protocol 5) on Wayland and writes them on a declared X11 window (support version 10).
+The calls are `stereo_depth_wayland_get_limits()` and `_watch_limits()`, `stereo_depth_x11_get_limits()` and `stereo_depth_x11_limits_event()`, with the same Python names.
+A compositor that does not offer them is told apart (`-ENOTSUP`), never answered with zeros; see "The person's depth limits" in API.md.
