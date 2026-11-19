@@ -711,6 +711,15 @@ void stereo_declare_wayland_finish(void)
     if (state.content_manager) {
         wp_content_type_manager_v1_destroy(state.content_manager);
     }
+    /* The outputs bound for their widths are this library's objects too. A caller that set the library up on a
+     * queue of its own destroys that queue after this call, and libwayland aborts the program when an event
+     * arrives for an object still attached to a destroyed queue (ORDER 767). */
+    for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
+        if (outputs[i].output) {
+            wl_output_destroy(outputs[i].output);
+        }
+    }
+    memset(outputs, 0, sizeof(outputs));
     if (state.registry) {
         wl_registry_destroy(state.registry);
     }

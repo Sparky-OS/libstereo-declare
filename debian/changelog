@@ -1,3 +1,11 @@
+stereo-declare (1.11.1-1) unstable; urgency=medium
+
+  * stereo_declare_wayland_finish() destroys the wl_output objects the library bound for their widths (since
+    1.11.0). A caller that set the library up on a queue of its own and destroyed that queue afterwards was
+    aborted by libwayland ("Tried to add event to destroyed queue"): Dolphin did not start (ORDER 767).
+
+ -- Daniel Ramos (Capitain Jack) <Capitain_Jack@yahoo.com>  Thu, 19 Nov 2026 22:40:00 +0000
+
 stereo-declare (1.11.0-1) unstable; urgency=medium
 
   * The person's depth limits in the pixels of a program's buffer, in one place (ORDER 750; Daniel, 2026-11-19: "one
