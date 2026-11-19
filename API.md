@@ -1,4 +1,4 @@
-# stereo-declare API, version 1.5
+# stereo-declare API, version 1.11
 
 **For programmers:** how a program declares a 3D window or surface once, on X11 and on Wayland.
 
@@ -43,6 +43,8 @@ Every call returns 0 or a negative `errno` value (`-EINVAL` for a bad argument, 
 | `stereo_declare_wayland_use_content_type(surface, content_type)` | 1.0.0 | Hand over the surface's existing `wp_content_type_v1` |
 | `stereo_declare_wayland(surface, layout, class, subclass)` | 1.0.0 | Declare a surface; a new call updates the same declaration |
 | `stereo_declare_wayland_format(surface, layout)` | 1.1.0 | Declare the format only; the surface's content type stays the program's |
+| `stereo_view_source_supported_wayland()` | 1.9.0 | Nonzero when protocol 4 native view sources are available |
+| `stereo_declare_wayland_view_source(surface, x, y, width, height)` | 1.9.0 | Select one native rectangle independently in each view; all four values -1 unset it |
 | `stereo_remove_wayland(surface)` | 1.0.0 | Remove the declaration, before the surface is destroyed |
 | `stereo_declare_wayland_finish()` | 1.0.0 | Destroy everything the library made, before disconnecting |
 | `stereo_depth_supported_wayland()` | 1.5.0 | 1 once the compositor follows surfaces' desktop depth (protocol version 3), else 0 |
@@ -51,6 +53,17 @@ Every call returns 0 or a negative `errno` value (`-EINVAL` for a bad argument, 
 | `stereo_depth_wayland_set_desktop_depth(surface, mark)` | 1.5.0 | Mark the surface's pair as the desktop's own elements drawn once per eye, not stereo content |
 | `stereo_depth_wayland_set_place(surface, depth)` | 1.5.0 | Declare where a popup surface sits, from -1 (sunk limit) to 1 (popped limit) |
 | `stereo_depth_wayland_unset_place(surface)` | 1.5.0 | Withdraw the place |
+| `stereo_depth_limits_supported_wayland()` | 1.10.0 | 1 once the compositor is bound at protocol version 5, which sends the person's depth limits, else 0 |
+| `stereo_depth_wayland_get_limits(surface, limits)` | 1.10.0 | The person's sunk and popped limits of the output the surface mainly sits on; `-ENOTSUP` when not offered, `-ENODATA` before the first event |
+| `stereo_depth_wayland_watch_limits(surface, listener, data)` | 1.10.0 | Call the listener at every delivery of the limits |
+| `stereo_depth_limits_supported_x11(display)` | 1.10.0 | 1 when the support version is 10 or later, which writes the limits on a declared window |
+| `stereo_depth_x11_get_limits(display, window, limits)` | 1.10.0 | The same two numbers from `_KDE_NET_WM_STEREO_DEPTH_LIMITS` of a window that declares stereo content |
+| `stereo_depth_x11_limits_event(display, window, event, limits)` | 1.10.0 | Inspect a PropertyNotify: the limits changed (1), an unrelated event (0), or the property went (`-ENODATA`) |
+| `stereo_depth_limits_for_buffer(screen_limits, output_width, buffer_width, shown_width, out)` | 1.11.0 | The limits in the pixels of a buffer: `limit * output_width / 1920 * buffer_width / shown_width`; nothing else enters, never the window's own size |
+| `stereo_depth_x11_output_width(display, window, width)` | 1.11.0 | The width of the RandR monitor the window overlaps most (Xwayland's outputs too) |
+| `stereo_depth_x11_get_buffer_limits(display, window, buffer_width, shown_width, out)` | 1.11.0 | `stereo_depth_x11_get_limits` and the conversion with the window's output |
+| `stereo_depth_wayland_output_width(width)` | 1.11.0 | The width of the only `wl_output`; `-ENOTUNIQ` with several (give the toolkit's screen width to the pure conversion) |
+| `stereo_depth_wayland_get_buffer_limits(surface, buffer_width, shown_width, out)` | 1.11.0 | `stereo_depth_wayland_get_limits` and the conversion |
 
 ## Desktop depth
 
@@ -61,10 +74,76 @@ For that it follows the surface:
 - the listener hears `awake`, nonzero while the surface may show depth inside it: it is on a stereo output and awake (the active window on top of what it overlaps, a popup, a panel, a desktop widget), not one of the windows lying flat behind the active one. While it is not, the surface is drawn as for a 2D output;
 - and `output_edges`, the surface's edges on its output's edge (`STEREO_DEPTH_EDGE_LEFT` 1, `_TOP` 2, `_RIGHT` 4, `_BOTTOM` 8), where nothing comes nearer than the screen.
 
-The depth limits are the user's settings, which the toolkit reads itself.
+How far the elements may go, the depth limits, are the person's: see [The person's depth limits](#the-persons-depth-limits-1100-wayland-protocol-5-x11-support-10).
 A pair drawn that way is the desktop's, not stereo content: `stereo_depth_wayland_set_desktop_depth(surface, 1)` says so, and the compositor still shows each view in its eye.
 A popup surface may declare its place with `stereo_depth_wayland_set_place()`; the compositor places it there under its own rules (at the output's edge it stays at the screen, and it is never behind the popup it was opened from).
 A surface may be followed by the library and, at the same time, by other parts of the program with their own objects.
+
+## The person's depth limits (1.10.0, Wayland protocol 5, X11 support 10)
+
+A program that shows depth reads the limits here before inventing numbers.
+Stereo KWin resolves them per output: the person's sunk and popped limits (Display Settings), built on the depth the output's display gets from its kind and physical size (a headset more separation, a framed 3D screen less).
+The library hands those two numbers over; it never reads the compositor's settings and never computes limits of its own.
+The names are the compositor's, the browser's and the boot splash's: **sunk** is how far behind the screen anything may go and **popped** how far in front of it, both magnitudes in pixels of a view 1920 wide, as the protocol carries them (24.8 fixed point).
+A program scales them to its own view's width, `limit * width / 1920`, and draws nothing beyond them.
+
+```c
+struct stereo_depth_limits { double sunk, popped; };
+```
+
+| Route | Offered when | Read | Live |
+|---|---|---|---|
+| Wayland | `kde_stereo_content_manager_v1` at version 5 or later (`stereo_depth_limits_supported_wayland()`) | `stereo_depth_wayland_get_limits(surface, &limits)` | `stereo_depth_wayland_watch_limits(surface, listener, data)` |
+| X11 and Xwayland | `_KDE_NET_WM_STEREO_CONTENT_SUPPORTED` 10 or later (`stereo_depth_limits_supported_x11(display)`), on a window that declares stereo content | `stereo_depth_x11_get_limits(display, window, &limits)` | select `PropertyChangeMask`, pass each event to `stereo_depth_x11_limits_event()` |
+
+Every call returns 0 with the structure filled, or a negative value that leaves it untouched, so a program never gets zeros that look like limits:
+
+| Return | Meaning | What the program does |
+|---|---|---|
+| `-ENOTSUP` | Not offered: the compositor (Wayland: protocol under 5, or none; X11: support under 10) does not send them, or the loaded library is older | Show the depth it would have without limits and tell the person, or draw flat; never guess numbers |
+| `-ENODATA` | Offered, not delivered yet: Wayland before the compositor's first event, X11 while the window does not declare stereo content (or after it stops) | Dispatch the queue and ask again, or wait for the listener or the property event |
+| `-EPROTO` | X11 only: the property is not two CARDINAL values | Treat as not offered and report it |
+| `-EINVAL` | A null argument, a window of 0, a surface not followed | A bug in the caller |
+
+**The version negotiation.** The library binds the manager at the lower of the compositor's version and the 5 it knows, so it never expects an event above the version it bound; a compositor offering 6 is spoken to as 5, one offering 4 (KWin before +stereo3d43) as 4, and the limits are then "not offered".
+This matters: KWin once sent `depth_limits` (since 5) to a client bound at version 3, and libwayland dropped the connection ("interface 'kde_stereo_depth_v1' has no event 1").
+Programs linked against 1.8 or 1.9 run unchanged: the SONAME is the same and only symbols were added.
+
+**Wayland.** The first `stereo_depth_wayland_get_limits()` or `_watch_limits()` for a surface follows its depth (the same object `stereo_depth_wayland_watch()` makes, so one object serves both) and `get` answers `-ENODATA` until the event is dispatched.
+The listener is called for each delivery after that, when the person changes the limits, when the output's mode or kind changes and when the surface moves to another output; it is not called for limits already received, so read those with `get` right after watching.
+`stereo_depth_wayland_unwatch()` ends it with the rest.
+
+```c
+static void limits_changed(void *data, struct wl_surface *surface, const struct stereo_depth_limits *limits)
+{
+    /* redraw the elements inside limits->sunk and limits->popped (pixels of a view 1920 wide) */
+}
+
+struct stereo_depth_limits limits;
+int result = stereo_depth_wayland_watch_limits(surface, limits_changed, NULL);
+if (result == -ENOTSUP) {
+    /* this compositor does not send them: say so, draw flat */
+} else if (result == 0 && stereo_depth_wayland_get_limits(surface, &limits) == 0) {
+    /* already known */
+}
+```
+
+**X11.** Declare the window first (`stereo_declare_x11()`), select `PropertyChangeMask` on it and read:
+
+```c
+struct stereo_depth_limits limits;
+int result = stereo_depth_x11_get_limits(display, window, &limits);
+/* 0: limits filled; -ENOTSUP: not offered; -ENODATA: not written yet, wait for the event */
+while (XNextEvent(display, &event), 1) {
+    if (stereo_depth_x11_limits_event(display, window, &event, &limits) == 1) {
+        /* the person changed them, or the window moved to another output */
+    }
+}
+```
+
+`stereo_depth_x11_limits_event()` returns 1 for a changed value, 0 for an event that is not about the limits (any other property or window), `-ENODATA` when the property was deleted (the window stopped declaring), and passes the other errors on.
+Pass a null event to read the current value as a poll.
+Python: `Declaration.depth_limits(window)`, `x11_depth_limits(display, window)`, `x11_depth_limits_event(display, window, event)` and the `Wayland` class (`depth_limits(surface)`, `watch(surface, callback)`) give `DepthLimits(sunk, popped)` and raise `DepthLimitsNotOffered` or `DepthLimitsNotDelivered`.
 
 ## Values
 
@@ -188,7 +267,7 @@ The child must be inside the parent; the compositor drops one that is not.
 ## Python
 
 `stereo_declare.py` (since 1.2.0; `windows_of` since 1.3.0) is for programs that start or watch another program's window and cannot link C.
-It loads `libstereo-declare.so.1` with ctypes, so it makes the declaration the C calls make; it handles X11 and Xwayland windows, not Wayland surfaces.
+It loads `libstereo-declare.so.1` with ctypes, so it makes the declaration the C calls make; it declares X11 and Xwayland windows, not Wayland surfaces. Since 1.10.0 it also hands over the person's depth limits of an X11 window and of a Wayland surface (below).
 
 | Name | What it does |
 |---|---|
@@ -199,6 +278,9 @@ It loads `libstereo-declare.so.1` with ctypes, so it makes the declaration the C
 | `Declaration.close()` | Removes every declaration and closes the display. |
 | `window_state(path)` | Reads the state file wiz3D writes (`wiz3d-full-sbs-v1`, width, height, executable, window id); `None` for a file that is partial or not valid. |
 | `descendants(pid, known)` | The processes below `pid`; `known` keeps those Wine reparents. |
+| `Declaration.depth_limits(window)` and `x11_depth_limits(display, window, lib=None)` | 1.10.0: the person's depth limits of a declared X11 window as `DepthLimits(sunk, popped)`; raise `DepthLimitsNotOffered` (support under 10, or a library older than 1.10.0) or `DepthLimitsNotDelivered` |
+| `x11_depth_limits_event(display, window, event)` | 1.10.0: `DepthLimits` for a change of the window's limits, `None` for an unrelated event |
+| `Wayland(display, queue=None)` | 1.10.0: the Wayland side on a display the caller owns (native `wl_display` pointer, dispatched by the caller): `offered`, `depth_limits(surface)`, `watch(surface, callback)`, `unwatch(surface)`, `close()`; it can be used in a `with` block |
 
 ```python
 import stereo_declare
@@ -332,3 +414,15 @@ This call neither reparents the X window nor changes its content, class, one-vie
 Keep the content declaration for the native window's lifetime, even when a GLX or Vulkan handle is recreated.
 The caller still owns effective visibility, clipping, placement and input, and must detach membership before destroying an owner.
 At the actual content window's destruction, use `stereo_remove_x11_child()` for a listed child, or detach and remove its content separately.
+
+## Native view sources (1.9.0, Wayland protocol 4)
+
+A cropped packed buffer can retain every native sample and declare the same fractional source rectangle independently within each view.
+Call `stereo_declare_wayland_format(surface, STEREO_SBS_FULL)` first, then `stereo_declare_wayland_view_source(surface, x, y, width, height)` before the surface commit.
+Coordinates are native buffer pixels after the buffer transform, relative to each half of the viewport source, at Wayland's 24.8 fixed-point precision.
+The viewport destination still gives the logical drawing size; only the compositor resizes the selected samples.
+Set all four source values to -1 to unset; mono or declaration removal also clears the rectangle.
+This call neither changes the content format nor commits the surface.
+It returns `-ENOTSUP` when protocol 4 is absent, `-ENOENT` without a library-owned declaration, and `-EINVAL` for invalid or unrepresentable coordinates.
+The compositor checks the source against the attached buffer at commit.
+An older compositor remains usable for ordinary full side-by-side declarations, but cannot implement fractional per-view cropping; the caller must report that explicit limitation.

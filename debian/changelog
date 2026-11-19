@@ -1,3 +1,42 @@
+stereo-declare (1.11.0-1) unstable; urgency=medium
+
+  * The person's depth limits in the pixels of a program's buffer, in one place (ORDER 750; Daniel, 2026-11-19: "one
+    separation setting, centralized, tailored TO THE SCREEN not to the element size"): stereo_depth_limits_for_buffer,
+    stereo_depth_x11_output_width, stereo_depth_x11_get_buffer_limits, stereo_depth_wayland_output_width and
+    stereo_depth_wayland_get_buffer_limits. Build-Depends libxrandr-dev.
+
+ -- Daniel Ramos (Capitain Jack) <Capitain_Jack@yahoo.com>  Thu, 19 Nov 2026 07:00:00 +0000
+
+stereo-declare (1.10.0-1) unstable; urgency=medium
+
+  * Hand a program the person's depth limits. Stereo KWin resolves them per
+    output (the person's sunk and popped limits, built on the output's
+    display) and sends them as kde_stereo_depth_v1.depth_limits on Wayland and
+    writes _KDE_NET_WM_STEREO_DEPTH_LIMITS on a declared X11 window; the
+    library now reads both: stereo_depth_wayland_get_limits and
+    stereo_depth_wayland_watch_limits, stereo_depth_x11_get_limits and
+    stereo_depth_x11_limits_event, with their support calls, in C and Python.
+  * Protocol copy up to version 5, the XML of KWin +stereo3d43 and later. The
+    manager is bound at the lower of the compositor's version and 5, so no
+    event above the bound version is ever expected, and a compositor that
+    offers 4 or less is answered with -ENOTSUP, never with zeros.
+  * Only symbols are added; the SONAME is kept and programs linked against 1.8
+    or 1.9 run unchanged. The header says where the limits come from.
+  * Test a fake compositor at versions 3, 4, 5 and 6, an X11 window with and
+    without the property, and the Python bindings for both routes.
+
+ -- Daniel Ramos (Capitain Jack) <Capitain_Jack@yahoo.com>  Tue, 10 Nov 2026 03:23:37 -0300
+
+stereo-declare (1.9.0-1) unstable; urgency=medium
+
+  * Add version-4 native per-view source rectangles without changing the
+    full side-by-side content format or existing declarations.
+  * Expose capability and source-rectangle calls with explicit errors for
+    older compositors, missing declarations and invalid coordinates.
+  * Test fractional values, unset, unsupported versions and invalid input.
+
+ -- Daniel Ramos (Capitain Jack) <Capitain_Jack@yahoo.com>  Tue, 03 Nov 2026 19:53:10 -0300
+
 stereo-declare (1.8.0-1) unstable; urgency=medium
 
   * Add a membership-only X11 child migration API, preserving live content
