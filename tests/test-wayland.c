@@ -351,7 +351,7 @@ int main(void)
     server = wl_display_create();
     loop = wl_display_get_event_loop(server);
     wl_global_create(server, &wl_compositor_interface, 4, NULL, bind_compositor);
-    /* a compositor newer than this library's protocol copy: the same interface description at version 6 */
+    /* a compositor newer than this library's protocol copy: the same interface description at version 7 */
     static struct wl_interface future_manager;
     future_manager = kde_stereo_content_manager_v1_interface;
     future_manager.version = 7;
@@ -371,7 +371,7 @@ int main(void)
     CHECK(stereo_declare_wayland_init(client, NULL) == -EBUSY);
     pump();
     CHECK(stereo_supported_wayland() == 1);
-    /* The compositor offers 6, newer than this library's protocol copy: it binds 5, never above. */
+    /* The compositor offers 7, newer than this library's protocol copy: it binds 6, never above. */
     CHECK(seen.manager_version == 6);
     CHECK(stereo_view_source_supported_wayland() == 1);
     CHECK(stereo_depth_supported_wayland() == 1);

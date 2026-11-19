@@ -193,43 +193,7 @@
     <arg name="output_edges" type="uint" enum="edge" summary="the surface's edges on its output's edge"/>
   </event>
 
-  <event name="depth_limits" since="5">
-    <description summary="The depth limits on the surface's output">
-      Sent after depth_state once the object is created and again whenever
-      either value changes, such as when the surface moves to another output,
-      the output's mode or kind changes, or the user changes the settings.
 
-      sunk and popped are how far behind and in front of the screen the
-      compositor lets anything go on the output the surface mainly sits on,
-      in pixels of a view 1920 wide. They are the user's limits built on the
-      output's display: a headset gets more separation, a framed 3D screen
-      less (the display's kind and physical size, libstereo-policy). A
-      surface uses the limits for that screen through the shared
-      stereo_depth_limits_for_buffer conversion, never by its own width.
-      Since version 6, output_width is sent immediately before every
-      depth_limits event. Together they describe the same selected output.
-      The compositor sends both again when that output or its pixel width
-      changes, even when sunk and popped stay the same.
-    </description>
-    <arg name="sunk" type="fixed" summary="the sunk limit, pixels of a view 1920 wide"/>
-    <arg name="popped" type="fixed" summary="the popped limit, pixels of a view 1920 wide"/>
-  </event>
-
-  <event name="output_width" since="6">
-    <description summary="Pixel width of the output the limits are for">
-      Sent immediately before each depth_limits event to resources of
-      version 6 or newer. The width is the pixel width of one view of the
-      output the surface mainly sits on, the same output as the following
-      limits. It is independent of the surface, window and buffer sizes.
-      Zero means the surface has no selected output with a known pixel width.
-
-      One separation setting, centralized, tailored to the screen, not to
-      the element size: the person's choice, built on the display. Clients
-      pass this width and the following limits to the shared buffer-pixel
-      conversion; they never rescale depth by their own window's width.
-    </description>
-    <arg name="width" type="uint" summary="selected output width in pixels per view, or zero"/>
-  </event>
 
   <request name="set_desktop_depth">
     <description summary="Mark the surface's pair as the desktop's own depth">
@@ -269,6 +233,45 @@
       wl_surface commit.
     </description>
   </request>
+
+  <event name="depth_limits" since="5">
+    <description summary="The depth limits on the surface's output">
+      Sent after depth_state once the object is created and again whenever
+      either value changes, such as when the surface moves to another output,
+      the output's mode or kind changes, or the user changes the settings.
+
+      sunk and popped are how far behind and in front of the screen the
+      compositor lets anything go on the output the surface mainly sits on,
+      in pixels of a view 1920 wide. They are the user's limits built on the
+      output's display: a headset gets more separation, a framed 3D screen
+      less (the display's kind and physical size, libstereo-policy). A
+      surface uses the limits for that screen through the shared
+      stereo_depth_limits_for_buffer conversion, never by its own width.
+      Since version 6, output_width is sent immediately before every
+      depth_limits event. Together they describe the same selected output.
+      The compositor sends both again when that output or its pixel width
+      changes, even when sunk and popped stay the same.
+    </description>
+    <arg name="sunk" type="fixed" summary="the sunk limit, pixels of a view 1920 wide"/>
+    <arg name="popped" type="fixed" summary="the popped limit, pixels of a view 1920 wide"/>
+  </event>
+
+  <event name="output_width" since="6">
+    <description summary="Pixel width of the output the limits are for">
+      Sent immediately before each depth_limits event to resources of
+      version 6 or newer. The width is the pixel width of one view of the
+      output the surface mainly sits on, the same output as the following
+      limits. It is independent of the surface, window and buffer sizes.
+      Zero means the surface has no selected output with a known pixel width.
+
+      One separation setting, centralized, tailored to the screen, not to
+      the element size: the person's choice, built on the display. Clients
+      pass this width and the following limits to the shared buffer-pixel
+      conversion; they never rescale depth by their own window's width.
+    </description>
+    <arg name="width" type="uint" summary="selected output width in pixels per view, or zero"/>
+  </event>
+
 </interface>
 
 </protocol>
