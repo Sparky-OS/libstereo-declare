@@ -1,2 +1,0 @@
-LOCAL1="Granice głębi 3D"
-LOCAL2="Granice głębi 3D ekranu są niedostępne dla %s. Zaktualizuj Stereo KWin do wersji udostępniającej szerokość wyjścia. Program nie może nadać scenie głębi."

@@ -11,7 +11,6 @@ include(CMakePackageConfigHelpers)
 include(CTest)
 
 option(STEREO_DECLARE_WERROR "Treat compiler warnings as errors" OFF)
-option(STEREO_DECLARE_PROBLEMS "Report ambiguous output limits through the edition problem engine" OFF)
 option(STEREO_DECLARE_EXAMPLES "Build the X11 and Wayland examples" OFF)
 set(STEREO_DECLARE_PYTHON_DIR "${CMAKE_INSTALL_DATADIR}/stereo-declare/python" CACHE STRING
     "Where stereo_declare.py is installed (a distribution sets its site-packages folder)")
@@ -50,7 +49,6 @@ endforeach()
 
 add_library(stereo-declare SHARED stereo-declare.c stereo-client.h stereo-protocol.c content_type-client.h content_type-protocol.c)
 target_compile_features(stereo-declare PRIVATE c_std_11)
-target_compile_definitions(stereo-declare PRIVATE $<$<BOOL:${STEREO_DECLARE_PROBLEMS}>:STEREO_DECLARE_PROBLEMS=1>)
 target_compile_options(stereo-declare PRIVATE -Wall -Wextra $<$<BOOL:${STEREO_DECLARE_WERROR}>:-Werror>)
 target_include_directories(stereo-declare PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)

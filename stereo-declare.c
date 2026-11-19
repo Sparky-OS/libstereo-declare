@@ -12,13 +12,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef STEREO_DECLARE_PROBLEMS
-#include <spawn.h>
-#include <stdio.h>
-#include <sys/wait.h>
-#include <unistd.h>
-extern char **environ;
-#endif
 
 unsigned stereo_declare_version(void)
 {
@@ -421,46 +414,11 @@ struct depth_follower {
     void *data;
     int limits_known;
     uint32_t output_width;
-    int problem_kept;
     struct stereo_depth_limits limits;
     stereo_depth_limits_listener limits_listener;
     void *limits_data;
     struct depth_follower *next;
 };
-
-static void depth_problem(struct depth_follower *follower, int result)
-{
-#ifdef STEREO_DECLARE_PROBLEMS
-    if (!follower || (result != 0 && result != -ENOTUNIQ)) {
-        return;
-    }
-    const int keep = result != 0;
-    if (keep == follower->problem_kept) {
-        return;
-    }
-    char key[96], executable[PATH_MAX + 1];
-    snprintf(key, sizeof(key), "depth-limits-%ld-%u", (long)getpid(), wl_proxy_get_id((struct wl_proxy *)follower->surface));
-    const ssize_t length = readlink("/proc/self/exe", executable, PATH_MAX);
-    executable[length > 0 ? length : 0] = '\0';
-    char *program = strrchr(executable, '/');
-    program = program ? program + 1 : executable;
-    char *keep_args[] = {"/usr/bin/sparky-stereo-problems", "keep", "--person", "--severity", "degraded",
-                         "libstereo-declare1", key, "LOCAL2", program, NULL};
-    char *clear_args[] = {"/usr/bin/sparky-stereo-problems", "clear", "--person", "libstereo-declare1", key, NULL};
-    pid_t child;
-    const int error = posix_spawn(&child, keep_args[0], NULL, NULL, keep ? keep_args : clear_args, environ);
-    if (error == 0) {
-        int status;
-        while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
-    } else {
-        fprintf(stderr, "libstereo-declare: screen depth limits are unavailable; the problem message could not start: %s\n", strerror(error));
-    }
-    follower->problem_kept = keep;
-#else
-    (void)follower;
-    (void)result;
-#endif
-}
 
 static _Thread_local struct {
     struct wl_display *display;
@@ -867,7 +825,6 @@ int stereo_depth_wayland_unwatch(struct wl_surface *surface)
     struct depth_follower *entry = *link;
     *link = entry->next;
     kde_stereo_depth_v1_destroy(entry->depth);
-    depth_problem(entry, 0);
     free(entry);
     return 0;
 }
@@ -1143,7 +1100,5 @@ int stereo_depth_wayland_get_buffer_limits(struct wl_surface *surface, double bu
     if (result == 0) {
         result = stereo_depth_limits_for_buffer(&limits, output_width, buffer_width, shown_width, buffer_limits);
     }
-    int error = 0;
-    depth_problem(follower_of(surface, 0, &error), result);
     return result;
 }

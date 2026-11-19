@@ -434,7 +434,6 @@ With protocol 6 the surface follower receives output_width immediately before
 its matching depth_limits. The buffer-limits getter uses that selected output
 width, without adding a listener to the toolkit's wl_surface. Protocol 5 keeps
 the single-output helper and returns -ENOTUNIQ when several outputs make it
-ambiguous. In edition packages, that failure is kept in the shared Problems
-engine in the person's language, and cleared when the surface obtains limits
-or stops being followed. Standalone builds enable this with
-STEREO_DECLARE_PROBLEMS; it adds no linked library or surface listener.
+ambiguous. The program must report unavailable limits. Spirula already shows
+that warning above its flat scene; the library adds no UI or notification
+dependency.
