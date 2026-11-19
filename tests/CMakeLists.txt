@@ -72,6 +72,11 @@ add_library(wayland-shim SHARED wayland-shim.c stereo-code.c stereo-server.h)
 target_include_directories(wayland-shim PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(wayland-shim PRIVATE PkgConfig::Wayland PkgConfig::WaylandServer)
 
+add_executable(test-wayland-queue test-wayland-queue.c)
+target_link_libraries(test-wayland-queue PRIVATE stereo-declare wayland-shim PkgConfig::Wayland)
+add_test(NAME wayland-queue-lifetime COMMAND test-wayland-queue)
+set_tests_properties(wayland-queue-lifetime PROPERTIES TIMEOUT 15)
+
 add_executable(test-buffer-limits test-buffer-limits.c)
 target_link_libraries(test-buffer-limits PRIVATE stereo-declare X11::X11 PkgConfig::Xrandr m)
 if(XVFB_RUN)

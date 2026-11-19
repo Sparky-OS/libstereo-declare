@@ -15,6 +15,8 @@ static struct wl_display *server, *client;
 static struct wl_event_loop *loop;
 static struct wl_resource *last_depth;
 static struct wl_compositor *compositor;
+static struct wl_resource *last_output;
+static unsigned output_binds;
 
 static void noop(struct wl_client *c, struct wl_resource *resource)
 {
@@ -97,14 +99,14 @@ static void global_remove(void *data, struct wl_registry *registry, uint32_t nam
     (void)data; (void)registry; (void)name;
 }
 
-void shim_pump(void)
+void shim_pump_queue(struct wl_event_queue *queue)
 {
     for (int i = 0; i < 4; i++) {
         wl_display_flush(client);
         wl_event_loop_dispatch(loop, 5);
         wl_display_flush_clients(server);
-        while (wl_display_prepare_read(client) != 0) {
-            wl_display_dispatch_pending(client);
+        while (wl_display_prepare_read_queue(client, queue) != 0) {
+            wl_display_dispatch_queue_pending(client, queue);
         }
         struct pollfd fd = {wl_display_get_fd(client), POLLIN, 0};
         if (poll(&fd, 1, 5) > 0) {
@@ -112,7 +114,42 @@ void shim_pump(void)
         } else {
             wl_display_cancel_read(client);
         }
-        wl_display_dispatch_pending(client);
+        wl_display_dispatch_queue_pending(client, queue);
+    }
+}
+
+void shim_pump(void)
+{
+    shim_pump_queue(NULL);
+}
+
+static void bind_output(struct wl_client *c, void *data, uint32_t version, uint32_t id)
+{
+    (void)data;
+    last_output = wl_resource_create(c, &wl_output_interface, version, id);
+    wl_resource_set_implementation(last_output, NULL, NULL, NULL);
+    output_binds++;
+    wl_output_send_geometry(last_output, 0, 0, 0, 0, WL_OUTPUT_SUBPIXEL_UNKNOWN,
+                            "test", "queue lifetime", WL_OUTPUT_TRANSFORM_NORMAL);
+    wl_output_send_mode(last_output, WL_OUTPUT_MODE_CURRENT, 1920, 1080, 60000);
+    wl_output_send_done(last_output);
+}
+
+void shim_add_output(void)
+{
+    wl_global_create(server, &wl_output_interface, 2, NULL, bind_output);
+}
+
+unsigned shim_output_binds(void)
+{
+    return output_binds;
+}
+
+void shim_send_output_mode(void)
+{
+    if (last_output) {
+        wl_output_send_mode(last_output, WL_OUTPUT_MODE_CURRENT, 1280, 800, 60000);
+        wl_output_send_done(last_output);
     }
 }
 
@@ -157,4 +194,6 @@ void shim_stop(void)
     wl_display_destroy(server);
     compositor = NULL;
     last_depth = NULL;
+    last_output = NULL;
+    output_binds = 0;
 }
