@@ -4,6 +4,8 @@
 #include "content_type-client.h"
 
 #include <X11/Xatom.h>
+#include <X11/extensions/Xrandr.h>
+#include <wayland-client-protocol.h>
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
@@ -433,10 +435,52 @@ static _Thread_local struct {
 /* The kde_stereo_content_manager_v1 version of protocol/kde-stereo-content-v1.xml. */
 #define STEREO_PROTOCOL_VERSION 5
 
+#define STEREO_MAX_OUTPUTS 16
+static struct {
+    struct wl_output *output;
+    uint32_t name;
+    int width; /* current mode, 0 until it arrives */
+} outputs[STEREO_MAX_OUTPUTS];
+
+static void output_geometry(void *d, struct wl_output *o, int32_t x, int32_t y, int32_t pw, int32_t ph, int32_t sub,
+                            const char *make, const char *model, int32_t transform)
+{
+    (void)d; (void)o; (void)x; (void)y; (void)pw; (void)ph; (void)sub; (void)make; (void)model; (void)transform;
+}
+static void output_mode(void *d, struct wl_output *o, uint32_t flags, int32_t width, int32_t height, int32_t refresh)
+{
+    (void)d; (void)height; (void)refresh;
+    if (!(flags & WL_OUTPUT_MODE_CURRENT)) {
+        return;
+    }
+    for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
+        if (outputs[i].output == o) {
+            outputs[i].width = width;
+        }
+    }
+}
+static void output_done(void *d, struct wl_output *o) { (void)d; (void)o; }
+static void output_scale(void *d, struct wl_output *o, int32_t f) { (void)d; (void)o; (void)f; }
+static const struct wl_output_listener output_listener = {.geometry = output_geometry, .mode = output_mode, .done = output_done, .scale = output_scale};
+
 static void global(void *data, struct wl_registry *registry, uint32_t name,
                    const char *interface, uint32_t version)
 {
     (void)data;
+    if (!strcmp(interface, wl_output_interface.name) && version >= 2) {
+        for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
+            if (!outputs[i].output) {
+                outputs[i].output = wl_registry_bind(registry, name, &wl_output_interface, 2);
+                outputs[i].name = name;
+                outputs[i].width = 0;
+                if (outputs[i].output) {
+                    wl_output_add_listener(outputs[i].output, &output_listener, NULL);
+                }
+                return;
+            }
+        }
+        return;
+    }
     if (!strcmp(interface, kde_stereo_content_manager_v1_interface.name) && version >= 1 && !state.manager) {
         /* Version 2 makes a declared surface one view wide when it has no viewport destination;
          * version 3 follows surfaces' desktop depth; version 4 carries native view sources;
@@ -456,6 +500,13 @@ static void global_remove(void *data, struct wl_registry *registry, uint32_t nam
 {
     (void)data;
     (void)registry;
+    for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
+        if (outputs[i].output && outputs[i].name == name) {
+            wl_output_destroy(outputs[i].output);
+            outputs[i].output = NULL;
+            outputs[i].width = 0;
+        }
+    }
     if (name == state.manager_name && state.manager) {
         kde_stereo_content_manager_v1_destroy(state.manager);
         state.manager = NULL;
@@ -916,4 +967,116 @@ int stereo_depth_x11_limits_event(Display *display, Window window, const XEvent 
     }
     const int result = read_depth_limits(display, window, atom, limits);
     return result == 0 && event ? 1 : result;
+}
+
+/* since 1.11.0: the person's limits in the pixels of a program's buffer */
+int stereo_depth_limits_for_buffer(const struct stereo_depth_limits *screen_limits, double output_width,
+                                   double buffer_width, double shown_width, struct stereo_depth_limits *buffer_limits)
+{
+    if (!screen_limits || !buffer_limits || !(output_width > 0) || !(buffer_width > 0) || !(shown_width > 0) ||
+        !isfinite(output_width) || !isfinite(buffer_width) || !isfinite(shown_width)) {
+        return -EINVAL;
+    }
+    const double k = output_width / 1920.0 * buffer_width / shown_width;
+    buffer_limits->sunk = screen_limits->sunk * k;
+    buffer_limits->popped = screen_limits->popped * k;
+    return 0;
+}
+
+int stereo_depth_x11_output_width(Display *display, Window window, double *output_width)
+{
+    if (!display || !window || !output_width) {
+        return -EINVAL;
+    }
+    int major = 0, minor = 0, event_base = 0, error_base = 0;
+    if (!XRRQueryExtension(display, &event_base, &error_base) || !XRRQueryVersion(display, &major, &minor) ||
+        major < 1 || (major == 1 && minor < 5)) {
+        return -ENOTSUP;
+    }
+    XWindowAttributes attributes;
+    Window root = 0;
+    int x = 0, y = 0;
+    Window child;
+    if (!XGetWindowAttributes(display, window, &attributes) || attributes.map_state == IsUnmapped) {
+        return -ENODATA;
+    }
+    root = attributes.root;
+    if (!XTranslateCoordinates(display, window, root, 0, 0, &x, &y, &child)) {
+        return -ENODATA;
+    }
+    int count = 0;
+    XRRMonitorInfo *monitors = XRRGetMonitors(display, root, True, &count);
+    if (!monitors) {
+        return -ENODATA;
+    }
+    long best = 0;
+    int width = 0;
+    for (int i = 0; i < count; i++) {
+        const long ox = (long)(x + attributes.width < monitors[i].x + monitors[i].width ? x + attributes.width : monitors[i].x + monitors[i].width) -
+                        (x > monitors[i].x ? x : monitors[i].x);
+        const long oy = (long)(y + attributes.height < monitors[i].y + monitors[i].height ? y + attributes.height : monitors[i].y + monitors[i].height) -
+                        (y > monitors[i].y ? y : monitors[i].y);
+        if (ox > 0 && oy > 0 && ox * oy > best) {
+            best = ox * oy;
+            width = monitors[i].width;
+        }
+    }
+    XRRFreeMonitors(monitors);
+    if (width <= 0) {
+        return -ENODATA;
+    }
+    *output_width = width;
+    return 0;
+}
+
+int stereo_depth_x11_get_buffer_limits(Display *display, Window window, double buffer_width, double shown_width,
+                                       struct stereo_depth_limits *buffer_limits)
+{
+    struct stereo_depth_limits limits;
+    double output_width = 0;
+    int result = stereo_depth_x11_get_limits(display, window, &limits);
+    if (result == 0) {
+        result = stereo_depth_x11_output_width(display, window, &output_width);
+    }
+    if (result == 0) {
+        result = stereo_depth_limits_for_buffer(&limits, output_width, buffer_width, shown_width, buffer_limits);
+    }
+    return result;
+}
+
+int stereo_depth_wayland_output_width(double *output_width)
+{
+    if (!output_width) {
+        return -EINVAL;
+    }
+    int found = 0, width = 0;
+    for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
+        if (outputs[i].output) {
+            found++;
+            width = outputs[i].width;
+        }
+    }
+    if (found == 0 || width <= 0) {
+        return -ENODATA;
+    }
+    if (found > 1) {
+        return -ENOTUNIQ;
+    }
+    *output_width = width;
+    return 0;
+}
+
+int stereo_depth_wayland_get_buffer_limits(struct wl_surface *surface, double buffer_width, double shown_width,
+                                           struct stereo_depth_limits *buffer_limits)
+{
+    struct stereo_depth_limits limits;
+    double output_width = 0;
+    int result = stereo_depth_wayland_get_limits(surface, &limits);
+    if (result == 0) {
+        result = stereo_depth_wayland_output_width(&output_width);
+    }
+    if (result == 0) {
+        result = stereo_depth_limits_for_buffer(&limits, output_width, buffer_width, shown_width, buffer_limits);
+    }
+    return result;
 }

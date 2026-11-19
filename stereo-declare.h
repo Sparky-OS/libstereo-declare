@@ -12,7 +12,7 @@ extern "C" {
  * meaning below; a minor version only adds. STEREO_DECLARE_VERSION is the
  * header's version, stereo_declare_version() the loaded library's. */
 #define STEREO_DECLARE_VERSION_MAJOR 1
-#define STEREO_DECLARE_VERSION_MINOR 10
+#define STEREO_DECLARE_VERSION_MINOR 11
 #define STEREO_DECLARE_VERSION_PATCH 0
 #define STEREO_DECLARE_VERSION_ENCODE(major, minor, patch) (((major) << 16) | ((minor) << 8) | (patch))
 #define STEREO_DECLARE_VERSION \
@@ -276,7 +276,8 @@ int stereo_depth_wayland_unset_place(struct wl_surface *surface);
  * its own surfaces there, so an element drawn at the popped limit and a menu the
  * compositor pops lie at the same depth on the same screen. Both are magnitudes
  * in pixels of a view 1920 wide, as the protocol carries them (24.8 fixed
- * point); a program scales them to its own view's width (limit * width / 1920).
+ * point). They are tailored to the screen, never to the size of a window, area, picture or
+ * buffer: a program gets them in its buffer's pixels from stereo_depth_limits_for_buffer() (1.11.0).
  * The names are the compositor's, the browser's and the boot splash's.
  *
  * Every call returns 0 with the limits filled, or a negative errno value that
@@ -339,6 +340,44 @@ int stereo_depth_x11_get_limits(Display *display, Window window, struct stereo_d
  * events. Since 1.10.0. */
 int stereo_depth_x11_limits_event(Display *display, Window window, const XEvent *event,
                                   struct stereo_depth_limits *limits);
+
+/* The person's depth limits for one program's buffer (since 1.11.0): the one
+ * conversion every program that draws its own stereo pair needs, in one place.
+ *
+ * The limits above are pixels of a view 1920 wide of the screen the window is
+ * on, and the compositor applies lround(limit * output width / 1920) there. A
+ * program draws into a buffer that the compositor then shows at some width, so
+ * the same limit in the pixels of that buffer is
+ *     limit * output_width / 1920 * buffer_width / shown_width
+ * with output_width the width in pixels of the output the window or surface is
+ * on (never the whole layout, never the primary output), buffer_width the width
+ * of one eye's buffer and shown_width the width the compositor shows that eye
+ * at on the output (the same as buffer_width when the program renders at the
+ * size it is shown). Nothing else enters: not the window's, the 3D area's, the
+ * picture's or the icon's own size. This adds no rule of its own.
+ *
+ * -EINVAL for a null argument or a width that is not positive and finite; the
+ * structure is left untouched. */
+int stereo_depth_limits_for_buffer(const struct stereo_depth_limits *screen_limits, double output_width,
+                                   double buffer_width, double shown_width, struct stereo_depth_limits *buffer_limits);
+/* The width in pixels of the output a window mainly sits on: the RandR monitor
+ * (XRRGetMonitors, so Xwayland's outputs too) that the window overlaps most.
+ * -ENOTSUP without RandR 1.5, -ENODATA when the window overlaps no monitor or is
+ * not mapped, -EINVAL for a null argument. */
+int stereo_depth_x11_output_width(Display *display, Window window, double *output_width);
+/* stereo_depth_x11_get_limits() followed by stereo_depth_limits_for_buffer() with
+ * the window's output; the errors of both, untouched structure on any. */
+int stereo_depth_x11_get_buffer_limits(Display *display, Window window, double buffer_width, double shown_width,
+                                       struct stereo_depth_limits *buffer_limits);
+/* The same on Wayland. The library learns the width of an output from the
+ * wl_output globals (current mode); which output a toolkit's surface entered is
+ * the toolkit's, so with more than one output this returns -ENOTUNIQ and the
+ * caller gives the width of its own screen to stereo_depth_limits_for_buffer()
+ * (Qt: QWindow::screen()). With one output it is that output's. -ENODATA until the
+ * output's mode has arrived. Needs stereo_declare_wayland_init(). */
+int stereo_depth_wayland_output_width(double *output_width);
+int stereo_depth_wayland_get_buffer_limits(struct wl_surface *surface, double buffer_width, double shown_width,
+                                           struct stereo_depth_limits *buffer_limits);
 
 #ifdef __cplusplus
 }

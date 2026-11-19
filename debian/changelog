@@ -1,3 +1,12 @@
+stereo-declare (1.11.0-1) unstable; urgency=medium
+
+  * The person's depth limits in the pixels of a program's buffer, in one place (ORDER 750; Daniel, 2026-11-19: "one
+    separation setting, centralized, tailored TO THE SCREEN not to the element size"): stereo_depth_limits_for_buffer,
+    stereo_depth_x11_output_width, stereo_depth_x11_get_buffer_limits, stereo_depth_wayland_output_width and
+    stereo_depth_wayland_get_buffer_limits. Build-Depends libxrandr-dev.
+
+ -- Daniel Ramos (Capitain Jack) <Capitain_Jack@yahoo.com>  Thu, 19 Nov 2026 07:00:00 +0000
+
 stereo-declare (1.10.0-1) unstable; urgency=medium
 
   * Hand a program the person's depth limits. Stereo KWin resolves them per

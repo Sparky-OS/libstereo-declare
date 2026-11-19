@@ -1,4 +1,4 @@
-# stereo-declare API, version 1.10
+# stereo-declare API, version 1.11
 
 **For programmers:** how a program declares a 3D window or surface once, on X11 and on Wayland.
 
@@ -59,6 +59,11 @@ Every call returns 0 or a negative `errno` value (`-EINVAL` for a bad argument, 
 | `stereo_depth_limits_supported_x11(display)` | 1.10.0 | 1 when the support version is 10 or later, which writes the limits on a declared window |
 | `stereo_depth_x11_get_limits(display, window, limits)` | 1.10.0 | The same two numbers from `_KDE_NET_WM_STEREO_DEPTH_LIMITS` of a window that declares stereo content |
 | `stereo_depth_x11_limits_event(display, window, event, limits)` | 1.10.0 | Inspect a PropertyNotify: the limits changed (1), an unrelated event (0), or the property went (`-ENODATA`) |
+| `stereo_depth_limits_for_buffer(screen_limits, output_width, buffer_width, shown_width, out)` | 1.11.0 | The limits in the pixels of a buffer: `limit * output_width / 1920 * buffer_width / shown_width`; nothing else enters, never the window's own size |
+| `stereo_depth_x11_output_width(display, window, width)` | 1.11.0 | The width of the RandR monitor the window overlaps most (Xwayland's outputs too) |
+| `stereo_depth_x11_get_buffer_limits(display, window, buffer_width, shown_width, out)` | 1.11.0 | `stereo_depth_x11_get_limits` and the conversion with the window's output |
+| `stereo_depth_wayland_output_width(width)` | 1.11.0 | The width of the only `wl_output`; `-ENOTUNIQ` with several (give the toolkit's screen width to the pure conversion) |
+| `stereo_depth_wayland_get_buffer_limits(surface, buffer_width, shown_width, out)` | 1.11.0 | `stereo_depth_wayland_get_limits` and the conversion |
 
 ## Desktop depth
 
