@@ -1,0 +1,2 @@
+LOCAL1="Limites de profundidade 3D"
+LOCAL2="Os limites de profundidade 3D da tela não estão disponíveis para %s. Atualize o Stereo KWin para uma versão que informe a largura da saída. O programa não consegue dar profundidade à cena."

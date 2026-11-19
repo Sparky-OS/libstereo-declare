@@ -1,1 +1,2 @@
 usr/lib/*/libstereo-declare.so.*
+usr/lib/systemd/catalog/*

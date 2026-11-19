@@ -12,6 +12,13 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef STEREO_DECLARE_PROBLEMS
+#include <spawn.h>
+#include <stdio.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char **environ;
+#endif
 
 unsigned stereo_declare_version(void)
 {
@@ -413,11 +420,47 @@ struct depth_follower {
     stereo_depth_listener listener;
     void *data;
     int limits_known;
+    uint32_t output_width;
+    int problem_kept;
     struct stereo_depth_limits limits;
     stereo_depth_limits_listener limits_listener;
     void *limits_data;
     struct depth_follower *next;
 };
+
+static void depth_problem(struct depth_follower *follower, int result)
+{
+#ifdef STEREO_DECLARE_PROBLEMS
+    if (!follower || (result != 0 && result != -ENOTUNIQ)) {
+        return;
+    }
+    const int keep = result != 0;
+    if (keep == follower->problem_kept) {
+        return;
+    }
+    char key[96], executable[PATH_MAX + 1];
+    snprintf(key, sizeof(key), "depth-limits-%ld-%u", (long)getpid(), wl_proxy_get_id((struct wl_proxy *)follower->surface));
+    const ssize_t length = readlink("/proc/self/exe", executable, PATH_MAX);
+    executable[length > 0 ? length : 0] = '\0';
+    char *program = strrchr(executable, '/');
+    program = program ? program + 1 : executable;
+    char *keep_args[] = {"/usr/bin/sparky-stereo-problems", "keep", "--person", "--severity", "degraded",
+                         "libstereo-declare1", key, "LOCAL2", program, NULL};
+    char *clear_args[] = {"/usr/bin/sparky-stereo-problems", "clear", "--person", "libstereo-declare1", key, NULL};
+    pid_t child;
+    const int error = posix_spawn(&child, keep_args[0], NULL, NULL, keep ? keep_args : clear_args, environ);
+    if (error == 0) {
+        int status;
+        while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+    } else {
+        fprintf(stderr, "libstereo-declare: screen depth limits are unavailable; the problem message could not start: %s\n", strerror(error));
+    }
+    follower->problem_kept = keep;
+#else
+    (void)follower;
+    (void)result;
+#endif
+}
 
 static _Thread_local struct {
     struct wl_display *display;
@@ -433,7 +476,7 @@ static _Thread_local struct {
 } state;
 
 /* The kde_stereo_content_manager_v1 version of protocol/kde-stereo-content-v1.xml. */
-#define STEREO_PROTOCOL_VERSION 5
+#define STEREO_PROTOCOL_VERSION 6
 
 #define STEREO_MAX_OUTPUTS 16
 static struct {
@@ -743,7 +786,18 @@ static void depth_limits(void *data, struct kde_stereo_depth_v1 *depth, wl_fixed
     }
 }
 
-static const struct kde_stereo_depth_v1_listener depth_listener = {depth_state, depth_limits};
+static void depth_output_width(void *data, struct kde_stereo_depth_v1 *depth, uint32_t width)
+{
+    (void)depth;
+    struct depth_follower *follower = data;
+    follower->output_width = width;
+}
+
+static const struct kde_stereo_depth_v1_listener depth_listener = {
+    .depth_state = depth_state,
+    .depth_limits = depth_limits,
+    .output_width = depth_output_width,
+};
 
 /* The surface's follower, made when @a create; NULL with errno-style @a error set otherwise. */
 static struct depth_follower *follower_of(struct wl_surface *surface, int create, int *error)
@@ -813,6 +867,7 @@ int stereo_depth_wayland_unwatch(struct wl_surface *surface)
     struct depth_follower *entry = *link;
     *link = entry->next;
     kde_stereo_depth_v1_destroy(entry->depth);
+    depth_problem(entry, 0);
     free(entry);
     return 0;
 }
@@ -1073,10 +1128,22 @@ int stereo_depth_wayland_get_buffer_limits(struct wl_surface *surface, double bu
     double output_width = 0;
     int result = stereo_depth_wayland_get_limits(surface, &limits);
     if (result == 0) {
-        result = stereo_depth_wayland_output_width(&output_width);
+        if (state.version >= 6) {
+            int error = 0;
+            const struct depth_follower *entry = follower_of(surface, 0, &error);
+            if (entry && entry->output_width > 0) {
+                output_width = entry->output_width;
+            } else {
+                result = entry ? -ENODATA : error;
+            }
+        } else {
+            result = stereo_depth_wayland_output_width(&output_width);
+        }
     }
     if (result == 0) {
         result = stereo_depth_limits_for_buffer(&limits, output_width, buffer_width, shown_width, buffer_limits);
     }
+    int error = 0;
+    depth_problem(follower_of(surface, 0, &error), result);
     return result;
 }

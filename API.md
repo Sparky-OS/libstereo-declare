@@ -426,3 +426,15 @@ This call neither changes the content format nor commits the surface.
 It returns `-ENOTSUP` when protocol 4 is absent, `-ENOENT` without a library-owned declaration, and `-EINVAL` for invalid or unrepresentable coordinates.
 The compositor checks the source against the attached buffer at commit.
 An older compositor remains usable for ordinary full side-by-side declarations, but cannot implement fractional per-view cropping; the caller must report that explicit limitation.
+
+
+### Several screens (1.12.0)
+
+With protocol 6 the surface follower receives output_width immediately before
+its matching depth_limits. The buffer-limits getter uses that selected output
+width, without adding a listener to the toolkit's wl_surface. Protocol 5 keeps
+the single-output helper and returns -ENOTUNIQ when several outputs make it
+ambiguous. In edition packages, that failure is kept in the shared Problems
+engine in the person's language, and cleared when the surface obtains limits
+or stops being followed. Standalone builds enable this with
+STEREO_DECLARE_PROBLEMS; it adds no linked library or surface listener.

@@ -3,6 +3,7 @@ Section: libs
 Maintainer: Daniel Ramos (Capitain Jack) <Capitain_Jack@yahoo.com>
 Build-Depends: debhelper-compat (= 13),
                cmake,
+               sparky-stereo-problems (>= 0.2.4),
                dh-python,
                libwayland-bin,
                libwayland-dev,
@@ -22,7 +23,7 @@ Vcs-Git: https://github.com/Sparky-OS/libstereo-declare.git
 Package: libstereo-declare1
 Architecture: any
 Multi-Arch: same
-Depends: ${misc:Depends}, ${shlibs:Depends}
+Depends: sparky-stereo-problems (>= 0.2.4), ${misc:Depends}, ${shlibs:Depends}
 Description: declare full side-by-side stereo windows and surfaces
  A small C library with which an X11 or Wayland program tells Stereo KWin,
  the compositor of Sparky Stereo OS, that a window or surface holds both

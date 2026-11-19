@@ -1,0 +1,2 @@
+LOCAL1="3D depth limits"
+LOCAL2="The screen's 3D depth limits are unavailable to %s. Update Stereo KWin to a version that supplies the output width. The program cannot place its scene in depth."

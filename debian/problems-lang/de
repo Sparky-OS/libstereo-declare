@@ -1,0 +1,2 @@
+LOCAL1="3D-Tiefengrenzen"
+LOCAL2="Die 3D-Tiefengrenzen des Bildschirms sind für %s nicht verfügbar. Aktualisieren Sie Stereo KWin auf eine Version, die die Breite der Ausgabe übermittelt. Das Programm kann seine Szene nicht mit Tiefe darstellen."

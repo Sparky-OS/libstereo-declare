@@ -6,4 +6,9 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 	dh $@ --buildsystem=cmake --with python3
 
 override_dh_auto_configure:
-	dh_auto_configure -- -DSTEREO_DECLARE_WERROR=ON -DSTEREO_DECLARE_PYTHON_DIR=lib/python3/dist-packages -DBUILD_TESTING=$(if $(filter nocheck,$(DEB_BUILD_OPTIONS)),OFF,ON)
+	dh_auto_configure -- -DSTEREO_DECLARE_WERROR=ON -DSTEREO_DECLARE_PROBLEMS=ON -DSTEREO_DECLARE_PYTHON_DIR=lib/python3/dist-packages -DBUILD_TESTING=$(if $(filter nocheck,$(DEB_BUILD_OPTIONS)),OFF,ON)
+
+override_dh_auto_install:
+	dh_auto_install
+	mkdir -p debian/tmp/usr/lib/systemd/catalog
+	sparky-stereo-problems catalog libstereo-declare1 debian/problems-lang debian/tmp/usr/lib/systemd/catalog --subject LOCAL1
