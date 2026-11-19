@@ -156,6 +156,16 @@ check(d.depth_limits(replacement.id) == (10.5, 4.25) and d.depth_limits(replacem
       'depth limits: sunk then popped, 24.8 fixed point')
 write_limits(replacement, 14.75, 6)
 check(tuple(stereo_declare.x11_depth_limits(d.native, replacement.id, d.lib)) == (14.75, 6.0), 'depth limits: live after a change')
+# 1.11: the limits in the pixels of a buffer, whatever the window's size (the pure conversion, two outputs)
+check(tuple(stereo_declare.limits_for_buffer((10, 4), 1920, 800, 800, d.lib)) == (10.0, 4.0), 'buffer limits: a window of any size on a 1920 wide output')
+check(tuple(stereo_declare.limits_for_buffer((10, 4), 3840, 300, 300, d.lib)) == (20.0, 8.0), 'buffer limits: twice that on a 3840 wide output')
+check(tuple(stereo_declare.limits_for_buffer((10, 4), 3840, 960, 1920, d.lib)) == (10.0, 4.0), 'buffer limits: a buffer rendered at half the size it is shown')
+try:
+    stereo_declare.limits_for_buffer((10, 4), 0, 1, 1, d.lib)
+except ValueError:
+    check(True, 'buffer limits: a zero width is refused')
+else:
+    check(False, 'buffer limits: a zero width is refused')
 replacement.change_property(limits_atom, Xatom.CARDINAL, 32, [1, 2, 3])
 x.sync()
 try:

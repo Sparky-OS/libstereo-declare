@@ -50,7 +50,7 @@ Package: python3-stereo-declare
 Section: python
 Architecture: all
 Multi-Arch: foreign
-Depends: libstereo-declare1 (>= 1.10.0),
+Depends: libstereo-declare1 (>= 1.11.0),
          python3-xlib,
          ${misc:Depends},
          ${python3:Depends}

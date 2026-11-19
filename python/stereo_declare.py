@@ -38,6 +38,8 @@ ONE_VIEW_SIZE_VERSION = 6
 
 # the first library version with the depth limits calls
 DEPTH_LIMITS_VERSION = (1 << 16) | (10 << 8)
+# the first library version that converts them for a program's buffer
+BUFFER_LIMITS_VERSION = (1 << 16) | (11 << 8)
 
 
 class StereoUnavailable(RuntimeError):
@@ -57,7 +59,8 @@ class DepthLimitsNotDelivered(RuntimeError):
 class DepthLimits(collections.namedtuple('DepthLimits', 'sunk popped')):
     """The person's limits on the output a window or surface mainly sits on, as Stereo KWin resolves them:
     how far behind (sunk) and in front of (popped) the screen anything may go, magnitudes in pixels of a view
-    1920 wide; scale them to the view's width (limit * width / 1920)."""
+    1920 wide of the screen. They are tailored to the screen, never to a window, area or picture: x11_buffer_limits() and
+    limits_for_buffer() give them in the pixels of a program's buffer."""
     __slots__ = ()
 
 
@@ -95,8 +98,57 @@ def _library(lib):
     lib.stereo_depth_wayland_get_limits.argtypes = [ctypes.c_void_p, ctypes.POINTER(_Limits)]
     lib.stereo_depth_wayland_watch_limits.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
     lib.stereo_depth_wayland_unwatch.argtypes = [ctypes.c_void_p]
+    if lib.stereo_declare_version() >= BUFFER_LIMITS_VERSION:
+        lib.stereo_depth_limits_for_buffer.argtypes = [ctypes.POINTER(_Limits), ctypes.c_double, ctypes.c_double,
+                                                       ctypes.c_double, ctypes.POINTER(_Limits)]
+        lib.stereo_depth_x11_output_width.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(ctypes.c_double)]
+        lib.stereo_depth_x11_get_buffer_limits.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_double,
+                                                           ctypes.c_double, ctypes.POINTER(_Limits)]
+        lib.stereo_depth_wayland_output_width.argtypes = [ctypes.POINTER(ctypes.c_double)]
+        lib.stereo_depth_wayland_get_buffer_limits.argtypes = [ctypes.c_void_p, ctypes.c_double, ctypes.c_double,
+                                                               ctypes.POINTER(_Limits)]
     lib._depth_limits_ready = True
     return lib
+
+
+def _buffer_library(lib):
+    lib = _library(lib)
+    if lib.stereo_declare_version() < BUFFER_LIMITS_VERSION:
+        raise DepthLimitsNotOffered('libstereo-declare 1.11.0 or later is required for the limits in a buffer\'s pixels')
+    return lib
+
+
+def limits_for_buffer(screen_limits, output_width, buffer_width, shown_width, lib=None):
+    """The limits of the screen (DepthLimits) in the pixels of a buffer of buffer_width pixels that the compositor shows
+    shown_width pixels wide on an output output_width pixels wide: limit * output_width / 1920 * buffer_width / shown_width.
+    Nothing else enters (not the window's own size). ValueError for a width that is not positive and finite."""
+    lib = _buffer_library(lib)
+    given = _Limits(screen_limits[0], screen_limits[1])
+    result = _Limits()
+    code = lib.stereo_depth_limits_for_buffer(ctypes.byref(given), output_width, buffer_width, shown_width, ctypes.byref(result))
+    if code == -errno.EINVAL:
+        raise ValueError('widths must be positive and finite')
+    return DepthLimits(result.sunk, result.popped)
+
+
+def x11_output_width(display, window, lib=None):
+    """The width in pixels of the RandR monitor the X11 window overlaps most (Xwayland's outputs too)."""
+    lib = _buffer_library(lib)
+    width = ctypes.c_double()
+    code = lib.stereo_depth_x11_output_width(display, window, ctypes.byref(width))
+    if code:
+        raise _limits_error(code)
+    return width.value
+
+
+def x11_buffer_limits(display, window, buffer_width, shown_width, lib=None):
+    """x11_depth_limits() in the pixels of the window's buffer (limits_for_buffer() with the window's output)."""
+    lib = _buffer_library(lib)
+    limits = _Limits()
+    code = lib.stereo_depth_x11_get_buffer_limits(display, window, buffer_width, shown_width, ctypes.byref(limits))
+    if code:
+        raise _limits_error(code)
+    return DepthLimits(limits.sunk, limits.popped)
 
 
 def x11_depth_limits(display, window, lib=None):
@@ -157,6 +209,16 @@ class Wayland:
         DepthLimitsNotDelivered until the compositor's event is dispatched; DepthLimitsNotOffered below protocol 5."""
         limits = _Limits()
         result = self.lib.stereo_depth_wayland_get_limits(surface, ctypes.byref(limits))
+        if result:
+            raise _limits_error(result)
+        return DepthLimits(limits.sunk, limits.popped)
+
+    def buffer_limits(self, surface, buffer_width, shown_width):
+        """depth_limits() in the pixels of the surface's buffer; OSError(ENOTUNIQ) with several outputs: give the
+        screen's width to limits_for_buffer() then."""
+        lib = _buffer_library(self.lib)
+        limits = _Limits()
+        result = lib.stereo_depth_wayland_get_buffer_limits(surface, buffer_width, shown_width, ctypes.byref(limits))
         if result:
             raise _limits_error(result)
         return DepthLimits(limits.sunk, limits.popped)
@@ -338,6 +400,10 @@ class Declaration:
         """The person's depth limits of a declared window (x11_depth_limits()); raises DepthLimitsNotOffered,
         DepthLimitsNotDelivered or OSError."""
         return x11_depth_limits(self.native, window, self.lib)
+
+    def buffer_limits(self, window, buffer_width, shown_width):
+        """The same limits in the pixels of the window's buffer (x11_buffer_limits())."""
+        return x11_buffer_limits(self.native, window, buffer_width, shown_width, self.lib)
 
     def update(self, wanted):
         for wid in self.active - wanted:

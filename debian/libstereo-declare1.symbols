@@ -33,3 +33,8 @@ libstereo-declare.so.1 libstereo-declare1 #MINVER#
  stereo_depth_limits_supported_x11@Base 1.10.0
  stereo_depth_x11_get_limits@Base 1.10.0
  stereo_depth_x11_limits_event@Base 1.10.0
+ stereo_depth_limits_for_buffer@Base 1.11.0
+ stereo_depth_x11_output_width@Base 1.11.0
+ stereo_depth_x11_get_buffer_limits@Base 1.11.0
+ stereo_depth_wayland_output_width@Base 1.11.0
+ stereo_depth_wayland_get_buffer_limits@Base 1.11.0
