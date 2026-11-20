@@ -99,6 +99,27 @@ static void global_remove(void *data, struct wl_registry *registry, uint32_t nam
     (void)data; (void)registry; (void)name;
 }
 
+void shim_pump(void)
+{
+    for (int i = 0; i < 4; i++) {
+        wl_display_flush(client);
+        wl_event_loop_dispatch(loop, 5);
+        wl_display_flush_clients(server);
+        while (wl_display_prepare_read(client) != 0) {
+            wl_display_dispatch_pending(client);
+        }
+        struct pollfd fd = {wl_display_get_fd(client), POLLIN, 0};
+        if (poll(&fd, 1, 5) > 0) {
+            wl_display_read_events(client);
+        } else {
+            wl_display_cancel_read(client);
+        }
+        wl_display_dispatch_pending(client);
+    }
+}
+
+/* The same pump for a queue of the caller's own; the queue must exist (libwayland reads it, NULL is not the
+ * default queue there). */
 void shim_pump_queue(struct wl_event_queue *queue)
 {
     for (int i = 0; i < 4; i++) {
@@ -116,11 +137,6 @@ void shim_pump_queue(struct wl_event_queue *queue)
         }
         wl_display_dispatch_queue_pending(client, queue);
     }
-}
-
-void shim_pump(void)
-{
-    shim_pump_queue(NULL);
 }
 
 static void bind_output(struct wl_client *c, void *data, uint32_t version, uint32_t id)
