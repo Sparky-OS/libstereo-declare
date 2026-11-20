@@ -14,6 +14,9 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 
 struct wl_display *shim_start(unsigned manager_version);
 void shim_add_output(void);
@@ -74,6 +77,11 @@ int main(void)
         return 1;
     }
     if (child == 0) {
+#ifdef __linux__
+        /* The abort this test catches on an older library is expected: it must not reach the system's crash handler,
+         * which records a crash even under a core size limit of 0 when the kernel pipes core dumps to it. */
+        prctl(PR_SET_DUMPABLE, 0);
+#endif
         _exit(scenario());
     }
     int status = 0;
