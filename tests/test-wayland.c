@@ -342,7 +342,7 @@ static void pump(void)
 int main(void)
 {
     CHECK(stereo_declare_version() == STEREO_DECLARE_VERSION);
-    CHECK(STEREO_DECLARE_VERSION == STEREO_DECLARE_VERSION_ENCODE(1, 11, 0));
+    CHECK(STEREO_DECLARE_VERSION == STEREO_DECLARE_VERSION_ENCODE(1, 12, 1));
 
     int fds[2];
     if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds) != 0) {
@@ -351,11 +351,11 @@ int main(void)
     server = wl_display_create();
     loop = wl_display_get_event_loop(server);
     wl_global_create(server, &wl_compositor_interface, 4, NULL, bind_compositor);
-    /* a compositor newer than this library's protocol copy: the same interface description at version 6 */
+    /* a compositor newer than this library's protocol copy: the same interface description at version 7 */
     static struct wl_interface future_manager;
     future_manager = kde_stereo_content_manager_v1_interface;
-    future_manager.version = 6;
-    struct wl_global *stereo_global = wl_global_create(server, &future_manager, 6, NULL, bind_manager);
+    future_manager.version = 7;
+    struct wl_global *stereo_global = wl_global_create(server, &future_manager, 7, NULL, bind_manager);
     CHECK(stereo_global != NULL);
     struct wl_global *type_global = wl_global_create(server, &wp_content_type_manager_v1_interface, 1, NULL, bind_type_manager);
     wl_client_create(server, fds[0]);
@@ -371,8 +371,8 @@ int main(void)
     CHECK(stereo_declare_wayland_init(client, NULL) == -EBUSY);
     pump();
     CHECK(stereo_supported_wayland() == 1);
-    /* The compositor offers 6, newer than this library's protocol copy: it binds 5, never above. */
-    CHECK(seen.manager_version == 5);
+    /* The compositor offers 7, newer than this library's protocol copy: it binds 6, never above. */
+    CHECK(seen.manager_version == 6);
     CHECK(stereo_view_source_supported_wayland() == 1);
     CHECK(stereo_depth_supported_wayland() == 1);
     CHECK(stereo_depth_limits_supported_wayland() == 1);
@@ -506,6 +506,47 @@ int main(void)
 
     /* One declaration per surface, the kind through wp_content_type_v1. */
     struct wl_surface *surface = wl_compositor_create_surface(compositor);
+    /* The compositor-selected width belongs to each followed surface, not the display. */
+    {
+        struct stereo_depth_limits limits = {-9, -9};
+        struct wl_surface *first = wl_compositor_create_surface(compositor);
+        CHECK(stereo_depth_wayland_get_buffer_limits(first, 640, 640, &limits) == -ENODATA);
+        pump();
+        struct wl_resource *first_depth = seen.last_depth;
+        kde_stereo_depth_v1_send_output_width(first_depth, 1920);
+        send_limits(first_depth, 10, 4);
+        pump();
+        CHECK(stereo_depth_wayland_get_buffer_limits(first, 640, 640, &limits) == 0);
+        CHECK(limits.sunk == 10 && limits.popped == 4);
+        struct wl_surface *second = wl_compositor_create_surface(compositor);
+        CHECK(stereo_depth_wayland_get_buffer_limits(second, 640, 640, &limits) == -ENODATA);
+        pump();
+        kde_stereo_depth_v1_send_output_width(seen.last_depth, 1280);
+        send_limits(seen.last_depth, 10, 4);
+        pump();
+        CHECK(stereo_depth_wayland_get_buffer_limits(second, 320, 640, &limits) == 0);
+        CHECK(fabs(limits.sunk - 10.0 / 3.0) < 1e-12 && fabs(limits.popped - 4.0 / 3.0) < 1e-12);
+        CHECK(stereo_depth_wayland_get_buffer_limits(first, 640, 640, &limits) == 0);
+        CHECK(limits.sunk == 10 && limits.popped == 4);
+        kde_stereo_depth_v1_send_output_width(first_depth, 1280);
+        send_limits(first_depth, 10, 4);
+        pump();
+        CHECK(stereo_depth_wayland_get_buffer_limits(first, 640, 640, &limits) == 0);
+        CHECK(fabs(limits.popped - 8.0 / 3.0) < 1e-12);
+        kde_stereo_depth_v1_send_output_width(first_depth, 0);
+        send_limits(first_depth, 10, 4);
+        pump();
+        limits = (struct stereo_depth_limits){-9, -9};
+        CHECK(stereo_depth_wayland_get_buffer_limits(first, 640, 640, &limits) == -ENODATA);
+        CHECK(limits.sunk == -9 && limits.popped == -9);
+        CHECK(stereo_depth_wayland_unwatch(first) == 0);
+        CHECK(stereo_depth_wayland_unwatch(second) == 0);
+        wl_surface_destroy(first);
+        wl_surface_destroy(second);
+        pump();
+        CHECK(wl_display_get_error(client) == 0);
+    }
+
     CHECK(stereo_declare_wayland(surface, STEREO_SBS_FULL, STEREO_CLASS_GAME, STEREO_GAME_3D) == 0);
     pump();
     CHECK(seen.stereo_creates == 1 && seen.set_contents == 1 && seen.last_content == 3);

@@ -413,6 +413,7 @@ struct depth_follower {
     stereo_depth_listener listener;
     void *data;
     int limits_known;
+    uint32_t output_width;
     struct stereo_depth_limits limits;
     stereo_depth_limits_listener limits_listener;
     void *limits_data;
@@ -433,7 +434,7 @@ static _Thread_local struct {
 } state;
 
 /* The kde_stereo_content_manager_v1 version of protocol/kde-stereo-content-v1.xml. */
-#define STEREO_PROTOCOL_VERSION 5
+#define STEREO_PROTOCOL_VERSION 6
 
 #define STEREO_MAX_OUTPUTS 16
 static struct {
@@ -711,6 +712,15 @@ void stereo_declare_wayland_finish(void)
     if (state.content_manager) {
         wp_content_type_manager_v1_destroy(state.content_manager);
     }
+    /* The outputs bound for their widths are this library's objects too. A caller that set the library up on a
+     * queue of its own destroys that queue after this call, and libwayland aborts the program when an event
+     * arrives for an object still attached to a destroyed queue (ORDER 767). */
+    for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
+        if (outputs[i].output) {
+            wl_output_destroy(outputs[i].output);
+        }
+    }
+    memset(outputs, 0, sizeof(outputs));
     if (state.registry) {
         wl_registry_destroy(state.registry);
     }
@@ -743,7 +753,18 @@ static void depth_limits(void *data, struct kde_stereo_depth_v1 *depth, wl_fixed
     }
 }
 
-static const struct kde_stereo_depth_v1_listener depth_listener = {depth_state, depth_limits};
+static void depth_output_width(void *data, struct kde_stereo_depth_v1 *depth, uint32_t width)
+{
+    (void)depth;
+    struct depth_follower *follower = data;
+    follower->output_width = width;
+}
+
+static const struct kde_stereo_depth_v1_listener depth_listener = {
+    .depth_state = depth_state,
+    .depth_limits = depth_limits,
+    .output_width = depth_output_width,
+};
 
 /* The surface's follower, made when @a create; NULL with errno-style @a error set otherwise. */
 static struct depth_follower *follower_of(struct wl_surface *surface, int create, int *error)
@@ -1073,7 +1094,17 @@ int stereo_depth_wayland_get_buffer_limits(struct wl_surface *surface, double bu
     double output_width = 0;
     int result = stereo_depth_wayland_get_limits(surface, &limits);
     if (result == 0) {
-        result = stereo_depth_wayland_output_width(&output_width);
+        if (state.version >= 6) {
+            int error = 0;
+            const struct depth_follower *entry = follower_of(surface, 0, &error);
+            if (entry && entry->output_width > 0) {
+                output_width = entry->output_width;
+            } else {
+                result = entry ? -ENODATA : error;
+            }
+        } else {
+            result = stereo_depth_wayland_output_width(&output_width);
+        }
     }
     if (result == 0) {
         result = stereo_depth_limits_for_buffer(&limits, output_width, buffer_width, shown_width, buffer_limits);
