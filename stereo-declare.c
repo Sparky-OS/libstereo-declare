@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: MIT */
+#define _GNU_SOURCE /* struct ucred and SO_PEERCRED */
 #include "stereo-declare.h"
 #include "stereo-client.h"
 #include "content_type-client.h"
@@ -9,9 +10,15 @@
 #include <errno.h>
 #include <limits.h>
 #include <math.h>
+#include <poll.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <time.h>
+#include <unistd.h>
 
 unsigned stereo_declare_version(void)
 {
@@ -400,6 +407,7 @@ int stereo_remove_x11(Display *display, Window window)
 
 struct declaration {
     struct wl_surface *surface;
+    uint32_t surface_id;
     struct kde_stereo_content_v1 *stereo;
     struct wp_content_type_v1 *content_type;
     int borrowed_content_type;
@@ -409,6 +417,7 @@ struct declaration {
 /* One surface's kde_stereo_depth_v1, made by watching it or by marking it. */
 struct depth_follower {
     struct wl_surface *surface;
+    uint32_t surface_id;
     struct kde_stereo_depth_v1 *depth;
     stereo_depth_listener listener;
     void *data;
@@ -419,6 +428,27 @@ struct depth_follower {
     void *limits_data;
     struct depth_follower *next;
 };
+
+#define STEREO_MAX_OUTPUTS 16
+
+/* The outputs' modes, for stereo_depth_wayland_output_width(), come from a connection of the library's own to the
+ * compositor the program is connected to. The compositor names every wl_output resource a client holds in
+ * wl_surface.enter and leave, so an output bound on the program's own connection reaches the program's surface
+ * listener as an object it never made: mpv 0.41 dereferences it and dies at its first frame (row 835, with 1.11.0
+ * to 1.12.1, which bound them there). Nothing is bound on the program's connection for the outputs. */
+struct output_watch {
+    struct wl_display *display;
+    struct wl_registry *registry;
+    unsigned bound; /* outputs bound during the last sync */
+    struct {
+        struct wl_output *output;
+        uint32_t name;
+        int width; /* current mode, 0 until it arrives */
+    } outputs[STEREO_MAX_OUTPUTS];
+};
+
+/* How long one answer may wait for the compositor, in milliseconds. */
+#define OUTPUT_WATCH_TIMEOUT_MS 2000
 
 static _Thread_local struct {
     struct wl_display *display;
@@ -431,57 +461,227 @@ static _Thread_local struct {
     unsigned version;
     struct declaration *declarations;
     struct depth_follower *followers;
+    struct output_watch watch;
 } state;
 
 /* The kde_stereo_content_manager_v1 version of protocol/kde-stereo-content-v1.xml. */
 #define STEREO_PROTOCOL_VERSION 6
 
-#define STEREO_MAX_OUTPUTS 16
-static struct {
-    struct wl_output *output;
-    uint32_t name;
-    int width; /* current mode, 0 until it arrives */
-} outputs[STEREO_MAX_OUTPUTS];
+/* A program that destroys a surface without withdrawing it leaves its entry here, and its next surface can be made
+ * at the same address. Its protocol id tells the two apart in the common case: libwayland frees an id only when the
+ * compositor's delete_id arrives and gives a new object the id freed last, which is rarely the surface's own (row 835:
+ * the reused address came with a new id in every measured run). A program still withdraws before destroying
+ * (API.md); an entry with the same address and the same id is taken for the same surface. */
+static uint32_t surface_id(struct wl_surface *surface)
+{
+    return wl_proxy_get_id((struct wl_proxy *)surface);
+}
 
-static void output_geometry(void *d, struct wl_output *o, int32_t x, int32_t y, int32_t pw, int32_t ph, int32_t sub,
-                            const char *make, const char *model, int32_t transform)
+static void watch_output_geometry(void *d, struct wl_output *o, int32_t x, int32_t y, int32_t pw, int32_t ph, int32_t sub,
+                                  const char *make, const char *model, int32_t transform)
 {
     (void)d; (void)o; (void)x; (void)y; (void)pw; (void)ph; (void)sub; (void)make; (void)model; (void)transform;
 }
-static void output_mode(void *d, struct wl_output *o, uint32_t flags, int32_t width, int32_t height, int32_t refresh)
+static void watch_output_mode(void *d, struct wl_output *o, uint32_t flags, int32_t width, int32_t height, int32_t refresh)
 {
-    (void)d; (void)height; (void)refresh;
+    struct output_watch *watch = d;
+    (void)height; (void)refresh;
     if (!(flags & WL_OUTPUT_MODE_CURRENT)) {
         return;
     }
     for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
-        if (outputs[i].output == o) {
-            outputs[i].width = width;
+        if (watch->outputs[i].output == o) {
+            watch->outputs[i].width = width;
         }
     }
 }
-static void output_done(void *d, struct wl_output *o) { (void)d; (void)o; }
-static void output_scale(void *d, struct wl_output *o, int32_t f) { (void)d; (void)o; (void)f; }
-static const struct wl_output_listener output_listener = {.geometry = output_geometry, .mode = output_mode, .done = output_done, .scale = output_scale};
+static void watch_output_done(void *d, struct wl_output *o) { (void)d; (void)o; }
+static void watch_output_scale(void *d, struct wl_output *o, int32_t f) { (void)d; (void)o; (void)f; }
+static const struct wl_output_listener watch_output_listener = {.geometry = watch_output_geometry, .mode = watch_output_mode,
+                                                                .done = watch_output_done, .scale = watch_output_scale};
+
+static void watch_global(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version)
+{
+    struct output_watch *watch = data;
+    if (strcmp(interface, wl_output_interface.name) || version < 2) {
+        return;
+    }
+    for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
+        if (!watch->outputs[i].output) {
+            watch->outputs[i].output = wl_registry_bind(registry, name, &wl_output_interface, 2);
+            watch->outputs[i].name = name;
+            watch->outputs[i].width = 0;
+            if (watch->outputs[i].output) {
+                wl_output_add_listener(watch->outputs[i].output, &watch_output_listener, watch);
+                watch->bound++;
+            }
+            return;
+        }
+    }
+}
+
+static void watch_global_remove(void *data, struct wl_registry *registry, uint32_t name)
+{
+    struct output_watch *watch = data;
+    (void)registry;
+    for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
+        if (watch->outputs[i].output && watch->outputs[i].name == name) {
+            wl_output_destroy(watch->outputs[i].output);
+            watch->outputs[i].output = NULL;
+            watch->outputs[i].width = 0;
+        }
+    }
+}
+
+static const struct wl_registry_listener watch_registry_listener = {watch_global, watch_global_remove};
+
+static void watch_close(struct output_watch *watch)
+{
+    for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
+        if (watch->outputs[i].output) {
+            wl_output_destroy(watch->outputs[i].output);
+        }
+    }
+    if (watch->registry) {
+        wl_registry_destroy(watch->registry);
+    }
+    if (watch->display) {
+        wl_display_disconnect(watch->display);
+    }
+    memset(watch, 0, sizeof(*watch));
+}
+
+/* A connection of the library's own to the program's compositor: the address the program's socket is connected to,
+ * and the same process at its other end. A program connected through a socket pair (WAYLAND_SOCKET) has no address
+ * to connect to again: -ENOTCONN, as for any connection that cannot be made. */
+static int watch_open(struct output_watch *watch, struct wl_display *program)
+{
+    const int program_fd = wl_display_get_fd(program);
+    struct sockaddr_un address;
+    socklen_t length = sizeof(address);
+    memset(&address, 0, sizeof(address));
+    if (getpeername(program_fd, (struct sockaddr *)&address, &length) != 0 || address.sun_family != AF_UNIX
+        || length <= offsetof(struct sockaddr_un, sun_path) || length > sizeof(address)) {
+        return -ENOTCONN;
+    }
+    const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) {
+        return -errno;
+    }
+    if (connect(fd, (struct sockaddr *)&address, length) != 0) {
+        close(fd);
+        return -ENOTCONN;
+    }
+    struct ucred program_peer, own_peer;
+    socklen_t program_size = sizeof(program_peer), own_size = sizeof(own_peer);
+    if (getsockopt(program_fd, SOL_SOCKET, SO_PEERCRED, &program_peer, &program_size) != 0
+        || getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &own_peer, &own_size) != 0 || program_peer.pid != own_peer.pid) {
+        /* another process took the address: not the program's compositor */
+        close(fd);
+        return -ENOTCONN;
+    }
+    watch->display = wl_display_connect_to_fd(fd); /* owns the descriptor, and closes it on failure */
+    if (!watch->display) {
+        return -ENOTCONN;
+    }
+    watch->registry = wl_display_get_registry(watch->display);
+    if (!watch->registry) {
+        watch_close(watch);
+        return -ENOMEM;
+    }
+    wl_registry_add_listener(watch->registry, &watch_registry_listener, watch);
+    return 0;
+}
+
+static void watch_synced(void *data, struct wl_callback *callback, uint32_t serial)
+{
+    (void)serial;
+    *(int *)data = 1;
+    wl_callback_destroy(callback);
+}
+
+static const struct wl_callback_listener watch_sync_listener = {watch_synced};
+
+static int ms_until(const struct timespec *deadline)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    const long long ms = (long long)(deadline->tv_sec - now.tv_sec) * 1000 + (deadline->tv_nsec - now.tv_nsec) / 1000000;
+    return ms < 0 ? 0 : ms > INT_MAX ? INT_MAX : (int)ms;
+}
+
+/* One round trip on the library's connection, bounded by the deadline: every event the compositor sent before the
+ * sync's done is dispatched. -ETIMEDOUT or -ENOTCONN when it cannot be completed. */
+static int watch_sync(struct output_watch *watch, const struct timespec *deadline)
+{
+    struct wl_display *display = watch->display;
+    int done = 0, result = 0;
+    struct wl_callback *callback = wl_display_sync(display);
+    if (!callback) {
+        return -ENOMEM;
+    }
+    wl_callback_add_listener(callback, &watch_sync_listener, &done);
+    while (!done && result == 0) {
+        if (wl_display_prepare_read(display) != 0) {
+            if (wl_display_dispatch_pending(display) < 0) {
+                result = -ENOTCONN;
+            }
+            continue;
+        }
+        if (wl_display_flush(display) < 0 && errno != EAGAIN) {
+            wl_display_cancel_read(display);
+            result = -ENOTCONN;
+            continue;
+        }
+        struct pollfd ready = {wl_display_get_fd(display), POLLIN, 0};
+        const int remaining = ms_until(deadline);
+        const int polled = remaining > 0 ? poll(&ready, 1, remaining) : 0;
+        if (polled <= 0) {
+            wl_display_cancel_read(display);
+            if (polled == 0) {
+                result = -ETIMEDOUT;
+            } else if (errno != EINTR) {
+                result = -ENOTCONN;
+            }
+            continue;
+        }
+        if (wl_display_read_events(display) < 0 || wl_display_dispatch_pending(display) < 0) {
+            result = -ENOTCONN;
+        }
+    }
+    if (!done) {
+        /* its listener points into this frame */
+        wl_callback_destroy(callback);
+    }
+    return result;
+}
+
+/* Brings the outputs and their current modes up to date: a sync, and one more after any output bound in it (its
+ * first mode arrives before the next sync's done). */
+static int watch_update(struct output_watch *watch)
+{
+    struct timespec deadline;
+    clock_gettime(CLOCK_MONOTONIC, &deadline);
+    deadline.tv_sec += OUTPUT_WATCH_TIMEOUT_MS / 1000;
+    deadline.tv_nsec += (OUTPUT_WATCH_TIMEOUT_MS % 1000) * 1000000L;
+    if (deadline.tv_nsec >= 1000000000L) {
+        deadline.tv_sec++;
+        deadline.tv_nsec -= 1000000000L;
+    }
+    for (int round = 0; round < 1 + STEREO_MAX_OUTPUTS; round++) {
+        watch->bound = 0;
+        const int result = watch_sync(watch, &deadline);
+        if (result != 0 || watch->bound == 0) {
+            return result;
+        }
+    }
+    return 0;
+}
 
 static void global(void *data, struct wl_registry *registry, uint32_t name,
                    const char *interface, uint32_t version)
 {
     (void)data;
-    if (!strcmp(interface, wl_output_interface.name) && version >= 2) {
-        for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
-            if (!outputs[i].output) {
-                outputs[i].output = wl_registry_bind(registry, name, &wl_output_interface, 2);
-                outputs[i].name = name;
-                outputs[i].width = 0;
-                if (outputs[i].output) {
-                    wl_output_add_listener(outputs[i].output, &output_listener, NULL);
-                }
-                return;
-            }
-        }
-        return;
-    }
     if (!strcmp(interface, kde_stereo_content_manager_v1_interface.name) && version >= 1 && !state.manager) {
         /* Version 2 makes a declared surface one view wide when it has no viewport destination;
          * version 3 follows surfaces' desktop depth; version 4 carries native view sources;
@@ -501,13 +701,6 @@ static void global_remove(void *data, struct wl_registry *registry, uint32_t nam
 {
     (void)data;
     (void)registry;
-    for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
-        if (outputs[i].output && outputs[i].name == name) {
-            wl_output_destroy(outputs[i].output);
-            outputs[i].output = NULL;
-            outputs[i].width = 0;
-        }
-    }
     if (name == state.manager_name && state.manager) {
         kde_stereo_content_manager_v1_destroy(state.manager);
         state.manager = NULL;
@@ -551,21 +744,51 @@ unsigned stereo_supported_wayland(void)
     return state.version ? 1 : 0;
 }
 
+/* The entry of a surface the program destroyed without withdrawing it: the library's own objects are destroyed (their
+ * destructors are valid on an object whose surface is gone), a content type the program lent is left alone (it is the
+ * program's, and may be gone with its surface), and nothing is sent about the surface. */
+static void drop_stale_declaration(struct declaration **link)
+{
+    struct declaration *entry = *link;
+    *link = entry->next;
+    if (entry->stereo) {
+        kde_stereo_content_v1_destroy(entry->stereo);
+    }
+    if (entry->content_type && !entry->borrowed_content_type) {
+        wp_content_type_v1_destroy(entry->content_type);
+    }
+    free(entry);
+}
+
+/* The live surface's entry, or NULL; an entry left at the same address by a destroyed surface is dropped. */
+static struct declaration *declaration_of(struct wl_surface *surface)
+{
+    for (struct declaration **link = &state.declarations; *link; link = &(*link)->next) {
+        if ((*link)->surface == surface) {
+            if ((*link)->surface_id == surface_id(surface)) {
+                return *link;
+            }
+            drop_stale_declaration(link);
+            return NULL;
+        }
+    }
+    return NULL;
+}
+
 int stereo_declare_wayland_use_content_type(struct wl_surface *surface, struct wp_content_type_v1 *content_type)
 {
     if (!surface || !content_type || !state.display) {
         return -EINVAL;
     }
-    for (struct declaration *entry = state.declarations; entry; entry = entry->next) {
-        if (entry->surface == surface) {
-            return -EBUSY;
-        }
+    if (declaration_of(surface)) {
+        return -EBUSY;
     }
     struct declaration *entry = calloc(1, sizeof(*entry));
     if (!entry) {
         return -ENOMEM;
     }
     entry->surface = surface;
+    entry->surface_id = surface_id(surface);
     entry->content_type = content_type;
     entry->borrowed_content_type = 1;
     entry->next = state.declarations;
@@ -579,10 +802,7 @@ static int declare_wayland(struct wl_surface *surface, enum stereo_layout layout
     if (!state.manager) {
         return -ENOTSUP;
     }
-    struct declaration *entry = state.declarations;
-    while (entry && entry->surface != surface) {
-        entry = entry->next;
-    }
+    struct declaration *entry = declaration_of(surface);
     int fresh = 0;
     if (!entry) {
         entry = calloc(1, sizeof(*entry));
@@ -590,6 +810,7 @@ static int declare_wayland(struct wl_surface *surface, enum stereo_layout layout
             return -ENOMEM;
         }
         entry->surface = surface;
+        entry->surface_id = surface_id(surface);
         entry->next = state.declarations;
         state.declarations = entry;
         fresh = 1;
@@ -659,10 +880,7 @@ int stereo_declare_wayland_view_source(struct wl_surface *surface,
     if (!unset && (fw <= 0 || fh <= 0)) {
         return -EINVAL;
     }
-    struct declaration *entry = state.declarations;
-    while (entry && entry->surface != surface) {
-        entry = entry->next;
-    }
+    const struct declaration *entry = declaration_of(surface);
     if (!entry || !entry->stereo) {
         return -ENOENT;
     }
@@ -712,15 +930,9 @@ void stereo_declare_wayland_finish(void)
     if (state.content_manager) {
         wp_content_type_manager_v1_destroy(state.content_manager);
     }
-    /* The outputs bound for their widths are this library's objects too. A caller that set the library up on a
-     * queue of its own destroys that queue after this call, and libwayland aborts the program when an event
-     * arrives for an object still attached to a destroyed queue (ORDER 767). */
-    for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
-        if (outputs[i].output) {
-            wl_output_destroy(outputs[i].output);
-        }
-    }
-    memset(outputs, 0, sizeof(outputs));
+    /* The outputs live on the library's own connection; nothing of them is attached to the caller's queue, which the
+     * caller may destroy after this call (ORDER 767). */
+    watch_close(&state.watch);
     if (state.registry) {
         wl_registry_destroy(state.registry);
     }
@@ -777,9 +989,18 @@ static struct depth_follower *follower_of(struct wl_surface *surface, int create
         *error = -ENOTSUP;
         return NULL;
     }
-    for (struct depth_follower *entry = state.followers; entry; entry = entry->next) {
-        if (entry->surface == surface) {
-            return entry;
+    for (struct depth_follower **link = &state.followers; *link; link = &(*link)->next) {
+        if ((*link)->surface == surface) {
+            if ((*link)->surface_id == surface_id(surface)) {
+                return *link;
+            }
+            /* left by a surface destroyed without unwatching: its depth object is inert, its limits are another
+             * surface's */
+            struct depth_follower *stale = *link;
+            *link = stale->next;
+            kde_stereo_depth_v1_destroy(stale->depth);
+            free(stale);
+            break;
         }
     }
     if (!create) {
@@ -792,6 +1013,7 @@ static struct depth_follower *follower_of(struct wl_surface *surface, int create
         return NULL;
     }
     entry->surface = surface;
+    entry->surface_id = surface_id(surface);
     entry->depth = kde_stereo_content_manager_v1_get_depth(state.manager, surface);
     if (!entry->depth) {
         free(entry);
@@ -1070,11 +1292,22 @@ int stereo_depth_wayland_output_width(double *output_width)
     if (!output_width) {
         return -EINVAL;
     }
+    if (!state.display) {
+        return -ENODATA; /* not set up on this thread: no output is known, as before */
+    }
+    int result = state.watch.display ? 0 : watch_open(&state.watch, state.display);
+    if (result == 0) {
+        result = watch_update(&state.watch);
+    }
+    if (result != 0) {
+        watch_close(&state.watch); /* the next call connects again */
+        return result;
+    }
     int found = 0, width = 0;
     for (int i = 0; i < STEREO_MAX_OUTPUTS; i++) {
-        if (outputs[i].output) {
+        if (state.watch.outputs[i].output) {
             found++;
-            width = outputs[i].width;
+            width = state.watch.outputs[i].width;
         }
     }
     if (found == 0 || width <= 0) {

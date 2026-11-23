@@ -45,7 +45,7 @@ Every call returns 0 or a negative `errno` value (`-EINVAL` for a bad argument, 
 | `stereo_declare_wayland_format(surface, layout)` | 1.1.0 | Declare the format only; the surface's content type stays the program's |
 | `stereo_view_source_supported_wayland()` | 1.9.0 | Nonzero when protocol 4 native view sources are available |
 | `stereo_declare_wayland_view_source(surface, x, y, width, height)` | 1.9.0 | Select one native rectangle independently in each view; all four values -1 unset it |
-| `stereo_remove_wayland(surface)` | 1.0.0 | Remove the declaration, before the surface is destroyed |
+| `stereo_remove_wayland(surface)` | 1.0.0 | Remove the declaration, before the surface is destroyed (the pointer still names it afterwards: nothing is sent about the surface) |
 | `stereo_declare_wayland_finish()` | 1.0.0 | Destroy everything the library made, before disconnecting |
 | `stereo_depth_supported_wayland()` | 1.5.0 | 1 once the compositor follows surfaces' desktop depth (protocol version 3), else 0 |
 | `stereo_depth_wayland_watch(surface, listener, data)` | 1.5.0 | Follow the surface's desktop depth: the listener hears whether it is awake and which edges lie on the output's edge |
@@ -62,7 +62,7 @@ Every call returns 0 or a negative `errno` value (`-EINVAL` for a bad argument, 
 | `stereo_depth_limits_for_buffer(screen_limits, output_width, buffer_width, shown_width, out)` | 1.11.0 | The limits in the pixels of a buffer: `limit * output_width / 1920 * buffer_width / shown_width`; nothing else enters, never the window's own size |
 | `stereo_depth_x11_output_width(display, window, width)` | 1.11.0 | The width of the RandR monitor the window overlaps most (Xwayland's outputs too) |
 | `stereo_depth_x11_get_buffer_limits(display, window, buffer_width, shown_width, out)` | 1.11.0 | `stereo_depth_x11_get_limits` and the conversion with the window's output |
-| `stereo_depth_wayland_output_width(width)` | 1.11.0 | The width of the only `wl_output`; `-ENOTUNIQ` with several (give the toolkit's screen width to the pure conversion) |
+| `stereo_depth_wayland_output_width(width)` | 1.11.0 | The width of the only `wl_output`; `-ENOTUNIQ` with several (give the toolkit's screen width to the pure conversion); from 1.12.2 learned on a connection of the library's own, `-ENOTCONN` when it cannot be made, `-ETIMEDOUT` when the compositor does not answer within 2 s |
 | `stereo_depth_wayland_get_buffer_limits(surface, buffer_width, shown_width, out)` | 1.11.0 | `stereo_depth_wayland_get_limits` and the conversion |
 
 ## Desktop depth
@@ -197,7 +197,9 @@ stereo_declare_wayland_finish();
 Rules:
 - **One display per thread.** The library's state is per thread: initialise and declare on the thread that dispatches the display, with surfaces of that display. A custom queue must be dispatched on that thread too.
 - **Initialisation is asynchronous.** Nothing is known until the registry's events have been dispatched; a standalone program does one roundtrip, a toolkit lets its event loop run.
-- **Everything takes effect with the surface's next commit,** which stays the program's: the library never commits, dispatches or disconnects.
+- **Everything takes effect with the surface's next commit,** which stays the program's: the library never commits, dispatches or disconnects the program's connection.
+- **The library makes no object the program can meet in its own listeners** (1.12.2). A compositor names in `wl_surface.enter` and `leave` every `wl_output` its client holds for that output, so an output bound on the program's connection would reach the program's surface listener as an object it never made (mpv 0.41 died of it at its first frame with 1.11.0 to 1.12.1). The library learns the outputs on a connection of its own, opened at the first `stereo_depth_wayland_output_width()` (or the buffer-limits getter on protocol 5) to the address the program's socket is connected to and checked to reach the same compositor process; it dispatches that connection only inside those calls and closes it in `stereo_declare_wayland_finish()`.
+- **Withdraw before the surface goes.** `stereo_remove_wayland()` and `stereo_depth_wayland_unwatch()` come before `wl_surface_destroy()`; both still accept the pointer afterwards. A program that skips them leaves an entry the library cannot see go: when a new surface is later made at the same address, the library recognises it by its protocol id (another id: the old entry is dropped, its declaration and depth objects destroyed, a content type the program lent left alone) and declares the new surface on objects of its own (1.12.2; 1.12.1 sent `set_content` on the dead surface's declaration, and the compositor ended the connection with `wl_surface was destroyed before a set_content request`). A new surface with the same address and the same id is taken for the same surface, so the obligation stands.
 - **A surface that already has a `wp_content_type_v1`** (mpv makes one for its window, for example) is declared with `stereo_declare_wayland_format()`, or hands its object over with `stereo_declare_wayland_use_content_type()` before its first `stereo_declare_wayland()`. Otherwise the library makes a second one, and the protocol answers with an `already_constructed` error that ends the connection. A handed-over object stays the program's; removal sets it back to none.
 - **Protocol version 2.** Since 1.4.0 the library binds version 2 of `kde_stereo_content_manager_v1` when the compositor offers it, and version 1 otherwise: with version 2 a declared surface without a viewport destination is one view wide, half its buffer's width; with a destination, the destination is one view's size in both versions.
 - **The 3D area of an ordinary window** is a subsurface of its own, placed below the window's surface, sized with `wp_viewporter` and declared; the window stays 2D and transparent over the area. Sparky Stereo OS's [stereo-window-3d-area](https://github.com/Sparky-OS/sparky-stereo-os/blob/main/skills/stereo-window-3d-area/SKILL.md) skill shows the pattern in Kdenlive, Marble, Krita and MpvQt.
@@ -437,3 +439,11 @@ the single-output helper and returns -ENOTUNIQ when several outputs make it
 ambiguous. The program must report unavailable limits. Spirula already shows
 that warning above its flat scene; the library adds no UI or notification
 dependency.
+
+### Outputs on the library's own connection (1.12.2)
+
+Up to 1.12.1 the library bound every `wl_output` on the program's connection for this helper, and the compositor then sent the program's surfaces `wl_surface.enter` for those objects too.
+From 1.12.2 nothing is bound there: `stereo_depth_wayland_output_width()` opens a connection of the library's own at its first call, to the address of the program's compositor socket (`getpeername`), and uses it only when the peer is the same process (`SO_PEERCRED`).
+Each call brings that connection's outputs and current modes up to date with bounded round trips, so the answer follows a mode change or a new output without the program dispatching anything.
+The answers are those of 1.12.1: the one output's current width, `-ENOTUNIQ` with several, `-ENODATA` with none or before this thread's `stereo_declare_wayland_init()`.
+A program connected through a socket pair (`WAYLAND_SOCKET`) has no address to connect to again, and a compositor that does not answer within 2 s cannot be read: the call then returns `-ENOTCONN` or `-ETIMEDOUT`, never a guessed width, and the next call tries again. Protocol 6's per-surface width needs no such connection.
