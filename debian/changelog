@@ -1,3 +1,17 @@
+stereo-declare (1.12.2-1) unstable; urgency=medium
+
+  * Bind no wl_output on the program's connection (row 835). The compositor
+    names every output a client holds in wl_surface.enter, and mpv 0.41 died
+    of an output it never bound at its first frame. The outputs' widths come
+    from a connection of the library's own to the same compositor; the
+    answers stay those of 1.12.1, with -ENOTCONN and -ETIMEDOUT when that
+    connection cannot be made or read.
+  * Recognise a surface made at the address of one destroyed without being
+    withdrawn by its protocol id, and declare it on objects of its own
+    instead of sending set_content on the dead surface's declaration.
+
+ -- Daniel Ramos (Capitain Jack) <Capitain_Jack@yahoo.com>  Mon, 23 Nov 2026 04:00:00 +0000
+
 stereo-declare (1.12.1-1) unstable; urgency=medium
 
   * Carry the wl_output teardown fix from 1.11.1 commit bc7d18f (ORDER 767).

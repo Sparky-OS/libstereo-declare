@@ -77,6 +77,13 @@ target_link_libraries(test-wayland-queue PRIVATE stereo-declare wayland-shim Pkg
 add_test(NAME wayland-queue-lifetime COMMAND test-wayland-queue)
 set_tests_properties(wayland-queue-lifetime PROPERTIES TIMEOUT 15)
 
+# Row 835: what a program meets of the library on its own connection, against a compositor in another process.
+add_executable(test-wayland-program test-wayland-program.c stereo-code.c stereo-server.h)
+target_include_directories(test-wayland-program PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(test-wayland-program PRIVATE stereo-declare PkgConfig::Wayland PkgConfig::WaylandServer)
+add_test(NAME wayland-program COMMAND test-wayland-program)
+set_tests_properties(wayland-program PROPERTIES TIMEOUT 60)
+
 add_executable(test-buffer-limits test-buffer-limits.c)
 target_link_libraries(test-buffer-limits PRIVATE stereo-declare X11::X11 PkgConfig::Xrandr m)
 if(XVFB_RUN)

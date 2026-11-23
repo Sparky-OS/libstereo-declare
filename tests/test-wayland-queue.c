@@ -8,6 +8,7 @@
 #include <stereo-declare.h>
 #include <wayland-client.h>
 
+#include <errno.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -54,9 +55,15 @@ static int scenario(void)
         return NO_INIT;
     }
     shim_pump_queue(queue);
+    /* From 1.12.2 the library binds no output on the caller's connection (row 835: the compositor names every output a
+     * client holds in wl_surface.enter, and a program's listener met one it never bound). It learns the outputs on a
+     * connection of its own to the compositor's address; this caller is connected through a socket pair, which has
+     * none, so the answer is an error and the width is left alone. */
     double width = 0;
-    if (shim_output_binds() != 1 || stereo_depth_wayland_output_width(&width) != 0 || width != 1920) {
-        fprintf(stderr, "the library did not bind the output on its queue: %u binds, width %g\n", shim_output_binds(), width);
+    const int answer = stereo_depth_wayland_output_width(&width);
+    if (shim_output_binds() != 0 || answer != -ENOTCONN || width != 0) {
+        fprintf(stderr, "the library bound %u outputs on the caller's connection, answered %d, width %g\n",
+                shim_output_binds(), answer, width);
         return NO_OUTPUT;
     }
     stereo_declare_wayland_finish();
